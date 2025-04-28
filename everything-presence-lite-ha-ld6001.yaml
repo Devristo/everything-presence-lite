@@ -1,6 +1,6 @@
 substitutions:
-  name: "everything-presence-lite"
-  friendly_name: "Everything Presence Lite"
+  name: "hoolty-booth-sensor"
+  friendly_name: "Hoolty Booth Sensor"
   illuminance_update_interval: "2s"
   hidden_ssid: "false"
   log_level: DEBUG

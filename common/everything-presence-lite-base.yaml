@@ -1,20 +1,24 @@
 esphome:
   name: ${name}
-  comment: Everything Presence Lite
+  comment: Hoolty Booth Sensor
   friendly_name: ${friendly_name}
   name_add_mac_suffix: True
   project: 
     name: EverythingSmartTechnology.Everything Presence Lite
     version: "1.2.2"
+  platformio_options:
+    build_flags: -DBOARD_HAS_PSRAM
+    board_build.arduino.memory_type: qio_opi
 
 esp32:
-  board: esp32dev
+  board: esp32-s3-devkitc-1
   framework:
-    type: esp-idf
+    type: arduino
 
 # Enable logging
 logger:
   level: ${log_level}
+  hardware_uart: 'UART0'
 
 # Enable Home Assistant API
 api:
@@ -26,53 +30,61 @@ ota:
     id: ota_http_request
 
 http_request:
+  verify_ssl: "false"
+
+captive_portal:
 
 wifi:
+  ssid: Ristorante
+  password: Pizzamargherita276
 
+  ap:
+      ssid: "Hoolty Booth Sensor"
+      password: "hooltybooth"
 improv_serial:
 
-i2c:
--  id: bus_a
-   sda: 21
-   scl: 22
-   scan: true
+#i2c:
+#-  id: bus_a
+#   sda: 21
+#   scl: 22
+#   scan: true
 
 light:
   - platform: status_led
     name: ESP32 LED
-    pin: GPIO14
+    pin: GPIO2
     internal: False
     restore_mode: ALWAYS_OFF
 
 number:
-  - platform: template
-    name: "Illuminance Offset"
-    id: illuminance_offset_ui
-    unit_of_measurement: "lx"
-    min_value: -100
-    max_value: 100
-    step: 5
-    mode: slider
-    update_interval: never
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    icon: "mdi:brightness-5"
-    entity_category: config
-    on_value:
-      - lambda: 'id(illuminance_sensor).update();'
+#  - platform: template
+#    name: "Illuminance Offset"
+#    id: illuminance_offset_ui
+#    unit_of_measurement: "lx"
+#    min_value: -100
+#    max_value: 100
+#    step: 5
+#    mode: slider
+#    update_interval: never
+#    optimistic: true
+#    restore_value: true
+#    initial_value: 0
+#    icon: "mdi:brightness-5"
+#    entity_category: config
+#    on_value:
+#      - lambda: 'id(illuminance_sensor).update();'
 
-sensor:
-  - platform: bh1750
-    name: Illuminance
-    id: illuminance_sensor
-    i2c_id: bus_a
-    address: 0x23
-    update_interval: ${illuminance_update_interval}
-    filters:
-      - lambda: "return x + id(illuminance_offset_ui).state;"
-      - clamp:
-          min_value: 0
+#sensor:
+#  - platform: bh1750
+#    name: Illuminance
+#    id: illuminance_sensor
+#    i2c_id: bus_a
+#    address: 0x23
+#    update_interval: ${illuminance_update_interval}
+#    filters:
+#      - lambda: "return x + id(illuminance_offset_ui).state;"
+#      - clamp:
+#          min_value: 0
 
 button:
   - platform: restart
