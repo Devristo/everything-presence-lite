@@ -56,6 +56,27 @@ esphome:
           id: uart_2
           data: [0x44, 0x11, 0x00, 0x00, 0x55, 0x4B]
 
+external_components:
+  - source:
+      type: git
+      url: https://github.com/MichaKersloot/esphome_custom_components
+    components: [ esp32_camera ]
+
+esp32_camera:
+  external_clock:
+    pin: GPIO15
+    frequency: 20MHz
+  i2c_pins:
+    sda: GPIO4
+    scl: GPIO5
+  data_pins: [GPIO11, GPIO9, GPIO8, GPIO10, GPIO12, GPIO18, GPIO17, GPIO16]
+  vsync_pin: GPIO6
+  href_pin: GPIO7
+  pixel_clock_pin: GPIO13
+
+  # Image settings
+  name: My Camera
+
 globals:
   - id: mmwave_update_time
     type: unsigned long
@@ -760,7 +781,70 @@ uart:
       - lambda: |-
           const static float RADIANS_TO_DEGREES = 180.0 / 3.14159265358979323846;
           const static float DEGREES_TO_RADIANS = 3.14159265358979323846 / 180.0;
-
+          
+          std::vector<sensor::Sensor*> TARGETS_X = {
+              id(target1_x),
+              id(target2_x),
+              id(target3_x),
+              id(target4_x),
+              id(target5_x),
+              id(target6_x),
+              id(target7_x),
+              id(target8_x),
+              id(target9_x),
+              id(target10_x),
+          };
+          
+          std::vector<sensor::Sensor*> TARGETS_Y = {
+              id(target1_y),
+              id(target2_y),
+              id(target3_y),
+              id(target4_y),
+              id(target5_y),
+              id(target6_y),
+              id(target7_y),
+              id(target8_y),
+              id(target9_y),
+              id(target10_y),
+          };
+          std::vector<sensor::Sensor*> TARGETS_ANGLE = {
+              id(target1_angle),
+              id(target2_angle),
+              id(target3_angle),
+              id(target4_angle),
+              id(target5_angle),
+              id(target6_angle),
+              id(target7_angle),
+              id(target8_angle),
+              id(target9_angle),
+              id(target10_angle),
+          };
+          
+          std::vector<sensor::Sensor*> TARGETS_DISTANCE = {
+              id(target1_distance),
+              id(target2_distance),
+              id(target3_distance),
+              id(target4_distance),
+              id(target5_distance),
+              id(target6_distance),
+              id(target7_distance),
+              id(target8_distance),
+              id(target9_distance),
+              id(target10_distance),
+          };
+          std::vector<binary_sensor::BinarySensor*> TARGETS_ACTIVE = {
+              id(target1_active),
+              id(target2_active),
+              id(target3_active),
+              id(target4_active),
+              id(target5_active),
+              id(target6_active),
+              id(target7_active),
+              id(target8_active),
+              id(target9_active),
+              id(target10_active),
+          };
+          
           if(bytes[1] == 0x11) {
             // Module Version
             char firmware_version_str[32];
@@ -768,7 +852,7 @@ uart:
             id(firmware_version).publish_state(std::string(firmware_version_str));
             return;
           }
-
+          
           if(bytes[1] == 0x62) {
             // Target Data
             if (bytes[4] != 0x00) {
@@ -777,1068 +861,131 @@ uart:
               ESP_LOGW("mmwave_fault", mmwave_fault);
               return;
             }
-
+          
             float installation_angle = id(installation_angle_ui).state * DEGREES_TO_RADIANS;
-
+          
             // Zone 1 bounds
             int zone1_count = 0;
             int zone1_begin_x_value = min(id(zone1_begin_x).state, id(zone1_end_x).state);
             int zone1_end_x_value = max(id(zone1_begin_x).state, id(zone1_end_x).state);
             int zone1_begin_y_value = min(id(zone1_begin_y).state, id(zone1_end_y).state);
             int zone1_end_y_value = max(id(zone1_begin_y).state, id(zone1_end_y).state);
-
+          
             // Zone 2 bounds
             int zone2_count = 0;
             int zone2_begin_x_value = min(id(zone2_begin_x).state, id(zone2_end_x).state);
             int zone2_end_x_value = max(id(zone2_begin_x).state, id(zone2_end_x).state);
             int zone2_begin_y_value = min(id(zone2_begin_y).state, id(zone2_end_y).state);
             int zone2_end_y_value = max(id(zone2_begin_y).state, id(zone2_end_y).state);
-
+          
             // Zone 3 bounds
             int zone3_count = 0;
             int zone3_begin_x_value = min(id(zone3_begin_x).state, id(zone3_end_x).state);
             int zone3_end_x_value = max(id(zone3_begin_x).state, id(zone3_end_x).state);
             int zone3_begin_y_value = min(id(zone3_begin_y).state, id(zone3_end_y).state);
             int zone3_end_y_value = max(id(zone3_begin_y).state, id(zone3_end_y).state);
-
+          
             // Zone 4 bounds
             int zone4_count = 0;
             int zone4_begin_x_value = min(id(zone4_begin_x).state, id(zone4_end_x).state);
             int zone4_end_x_value = max(id(zone4_begin_x).state, id(zone4_end_x).state);
             int zone4_begin_y_value = min(id(zone4_begin_y).state, id(zone4_end_y).state);
             int zone4_end_y_value = max(id(zone4_begin_y).state, id(zone4_end_y).state);
-
+          
             // Occupancy Mask 1 bounds
             int occupancy_mask_1_count = 0;
             int occupancy_mask_1_begin_x_value = min(id(occupancy_mask_1_begin_x).state, id(occupancy_mask_1_end_x).state);
             int occupancy_mask_1_end_x_value = max(id(occupancy_mask_1_begin_x).state, id(occupancy_mask_1_end_x).state);
             int occupancy_mask_1_begin_y_value = min(id(occupancy_mask_1_begin_y).state, id(occupancy_mask_1_end_y).state);
             int occupancy_mask_1_end_y_value = max(id(occupancy_mask_1_begin_y).state, id(occupancy_mask_1_end_y).state);
-
+          
             // There are a maximum of 10 targets
             uint8_t targets_detected = bytes[5];
-            uint8_t offset;
-
-            // Target 1
-            offset = (0 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p1_angle;
-            uint8_t p1_distance;
-            int8_t p1_x;
-            int8_t p1_y;
-            bool p1_active;
-            if (targets_detected >= 1) {
-              p1_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p1_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p1_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p1_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p1_angle - installation_angle;
-                p1_x = p1_distance * cos(angle);
-                p1_y = p1_distance * sin(angle);
-              }
-
-              p1_angle = (p1_angle * RADIANS_TO_DEGREES) - 90;
-              p1_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p1_x,
-                p1_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p1_x,
-                  p1_y
-                )) {
-                  zone1_count++;
+            for (uint8_t target; target < 10; target++) {
+                uint8_t offset = target * 8;
+                uint8_t p1_angle = 0;
+                uint8_t p1_distance = 0;
+                int8_t p1_x = 0;
+                int8_t p1_y = 0;
+                bool p1_active = false;
+          
+                if (targets_detected >= target + 1) {
+                    p1_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
+                    p1_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
+                    p1_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
+                    p1_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
+          
+                    if (installation_angle != 0) {
+                        float angle = p1_angle - installation_angle;
+                        p1_x = p1_distance * cos(angle);
+                        p1_y = p1_distance * sin(angle);
+                    }
+          
+                    p1_angle = (p1_angle * RADIANS_TO_DEGREES) - 90;
+                    p1_active = true;
+          
+                    if (point_in_polygon(occupancy_mask_1_begin_x_value, occupancy_mask_1_end_x_value, occupancy_mask_1_begin_y_value, occupancy_mask_1_end_y_value, p1_x, p1_y)) {
+                      occupancy_mask_1_count++;
+                    } else if (point_in_polygon(zone1_begin_x_value, zone1_end_x_value, zone1_begin_y_value, zone1_end_y_value, p1_x, p1_y)) {
+                      zone1_count++;
+                    } else if (point_in_polygon(zone2_begin_x_value, zone2_end_x_value, zone2_begin_y_value, zone2_end_y_value, p1_x, p1_y)) {
+                      zone2_count++;
+                    } else if (point_in_polygon(zone3_begin_x_value, zone3_end_x_value, zone3_begin_y_value, zone3_end_y_value, p1_x, p1_y)) {
+                      zone3_count++;
+                    } else if (point_in_polygon(zone4_begin_x_value, zone1_end_x_value, zone4_begin_y_value, zone4_end_y_value, p1_x, p1_y)) {
+                      zone4_count++;
+                    }
                 }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p1_x,
-                  p1_y
-                )) {
-                  zone2_count++;
+          
+                if (TARGETS_X[target]->state != p1_x) {
+                  TARGETS_X[target]->publish_state(p1_x);
                 }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p1_x,
-                  p1_y
-                )) {
-                  zone3_count++;
+          
+                if (TARGETS_Y[target]->state != p1_y) {
+                  TARGETS_Y[target]->publish_state(p1_y);
                 }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p1_x,
-                  p1_y
-                )) {
-                  zone4_count++;
+          
+                if (TARGETS_ANGLE[target]->state != p1_angle) {
+                  TARGETS_ANGLE[target]->publish_state(p1_angle);
                 }
-              }
-            } else {
-              p1_x = 0;
-              p1_y = 0;
-              p1_angle = 0;
-              p1_distance = 0;
-              p1_active = false;
-            }
-
-
-            if (id(target1_x).state != p1_x) {
-              id(target1_x).publish_state(p1_x);
-            }
-            if (id(target1_y).state != p1_y) {
-              id(target1_y).publish_state(p1_y);
-            }
-            if (id(target1_angle).state != p1_angle) {
-              id(target1_angle).publish_state(p1_angle);
-            }
-            if (id(target1_distance).state != p1_distance) {
-              id(target1_distance).publish_state(p1_distance);
-            }
-            if (id(target1_active).state != p1_active) {
-              id(target1_active).publish_state(p1_active);
-            }
-
-            // Target 2
-            offset = (1 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p2_angle;
-            uint8_t p2_distance;
-            int8_t p2_x;
-            int8_t p2_y;
-            bool p2_active;
-            if (targets_detected >= 2) {
-              p2_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p2_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p2_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p2_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p2_angle - installation_angle;
-                p2_x = p2_distance * cos(angle);
-                p2_y = p2_distance * sin(angle);
-              }
-
-              p2_angle = (p2_angle * RADIANS_TO_DEGREES) - 90;
-              p2_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p2_x,
-                p2_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p2_x,
-                  p2_y
-                )) {
-                  zone1_count++;
+          
+                if (TARGETS_DISTANCE[target]->state != p1_distance) {
+                  TARGETS_DISTANCE[target]->publish_state(p1_distance);
                 }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p2_x,
-                  p2_y
-                )) {
-                  zone2_count++;
+          
+                if (TARGETS_ACTIVE[target]->state != p1_active) {
+                  TARGETS_ACTIVE[target]->publish_state(p1_active);
                 }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p2_x,
-                  p2_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p2_x,
-                  p2_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p2_x = 0;
-              p2_y = 0;
-              p2_angle = 0;
-              p2_distance = 0;
-              p2_active = false;
             }
-
-            if (id(target2_x).state != p2_x) {
-              id(target2_x).publish_state(p2_x);
-            }
-            if (id(target2_y).state != p2_y) {
-              id(target2_y).publish_state(p2_y);
-            }
-            if (id(target2_angle).state != p2_angle) {
-              id(target2_angle).publish_state(p2_angle);
-            }
-            if (id(target2_distance).state != p2_distance) {
-              id(target2_distance).publish_state(p2_distance);
-            }
-            if (id(target2_active).state != p2_active) {
-              id(target2_active).publish_state(p2_active);
-            }
-
-            // Target 3
-            offset = (2 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p3_angle;
-            uint8_t p3_distance;
-            int8_t p3_x;
-            int8_t p3_y;
-            bool p3_active;
-            if (targets_detected >= 3) {
-              p3_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p3_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p3_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p3_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p3_angle - installation_angle;
-                p3_x = p3_distance * cos(angle);
-                p3_y = p3_distance * sin(angle);
-              }
-
-              p3_angle = (p3_angle * RADIANS_TO_DEGREES) - 90;
-              p3_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p3_x,
-                p3_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p3_x,
-                  p3_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p3_x,
-                  p3_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p3_x,
-                  p3_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p3_x,
-                  p3_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p3_x = 0;
-              p3_y = 0;
-              p3_angle = 0;
-              p3_distance = 0;
-              p3_active = false;
-            }
-
-            if (id(target3_x).state != p3_x) {
-              id(target3_x).publish_state(p3_x);
-            }
-            if (id(target3_y).state != p3_y) {
-              id(target3_y).publish_state(p3_y);
-            }
-            if (id(target3_angle).state != p3_angle) {
-              id(target3_angle).publish_state(p3_angle);
-            }
-            if (id(target3_distance).state != p3_distance) {
-              id(target3_distance).publish_state(p3_distance);
-            }
-            if (id(target3_active).state != p3_active) {
-              id(target3_active).publish_state(p3_active);
-            }
-
-            // Target 4
-            offset = (3 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p4_angle;
-            uint8_t p4_distance;
-            int8_t p4_x;
-            int8_t p4_y;
-            bool p4_active;
-            if (targets_detected >= 4) {
-              p4_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p4_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p4_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p4_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p4_angle - installation_angle;
-                p4_x = p4_distance * cos(angle);
-                p4_y = p4_distance * sin(angle);
-              }
-
-              p4_angle = (p4_angle * RADIANS_TO_DEGREES) - 90;
-              p4_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p4_x,
-                p4_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p4_x,
-                  p4_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p4_x,
-                  p4_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p4_x,
-                  p4_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p4_x,
-                  p4_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p4_x = 0;
-              p4_y = 0;
-              p4_angle = 0;
-              p4_distance = 0;
-              p4_active = false;
-            }
-
-            if (id(target4_x).state != p4_x) {
-              id(target4_x).publish_state(p4_x);
-            }
-            if (id(target4_y).state != p4_y) {
-              id(target4_y).publish_state(p4_y);
-            }
-            if (id(target4_angle).state != p4_angle) {
-              id(target4_angle).publish_state(p4_angle);
-            }
-            if (id(target4_distance).state != p4_distance) {
-              id(target4_distance).publish_state(p4_distance);
-            }
-            if (id(target4_active).state != p4_active) {
-              id(target4_active).publish_state(p4_active);
-            }
-
-            // Target 5
-            offset = (4 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p5_angle;
-            uint8_t p5_distance;
-            int8_t p5_x;
-            int8_t p5_y;
-            bool p5_active;
-            if (targets_detected >= 5) {
-              p5_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p5_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p5_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p5_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p5_angle - installation_angle;
-                p5_x = p5_distance * cos(angle);
-                p5_y = p5_distance * sin(angle);
-              }
-
-              p5_angle = (p5_angle * RADIANS_TO_DEGREES) - 90;
-              p5_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p5_x,
-                p5_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p5_x,
-                  p5_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p5_x,
-                  p5_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p5_x,
-                  p5_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p5_x,
-                  p5_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p5_x = 0;
-              p5_y = 0;
-              p5_angle = 0;
-              p5_distance = 0;
-              p5_active = false;
-            }
-
-            if (id(target5_x).state != p5_x) {
-              id(target5_x).publish_state(p5_x);
-            }
-            if (id(target5_y).state != p5_y) {
-              id(target5_y).publish_state(p5_y);
-            }
-            if (id(target5_angle).state != p5_angle) {
-              id(target5_angle).publish_state(p5_angle);
-            }
-            if (id(target5_distance).state != p5_distance) {
-              id(target5_distance).publish_state(p5_distance);
-            }
-            if (id(target5_active).state != p5_active) {
-              id(target5_active).publish_state(p5_active);
-            }
-
-            // Target 6
-            offset = (5 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p6_angle;
-            uint8_t p6_distance;
-            int8_t p6_x;
-            int8_t p6_y;
-            bool p6_active;
-            if (targets_detected >= 6) {
-              p6_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p6_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p6_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p6_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p6_angle - installation_angle;
-                p6_x = p6_distance * cos(angle);
-                p6_y = p6_distance * sin(angle);
-              }
-
-              p6_angle = (p6_angle * RADIANS_TO_DEGREES) - 90;
-              p6_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p6_x,
-                p6_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p6_x,
-                  p6_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p6_x,
-                  p6_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p6_x,
-                  p6_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p6_x,
-                  p6_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p6_x = 0;
-              p6_y = 0;
-              p6_angle = 0;
-              p6_distance = 0;
-              p6_active = false;
-            }
-
-            if (id(target6_x).state != p6_x) {
-              id(target6_x).publish_state(p6_x);
-            }
-            if (id(target6_y).state != p6_y) {
-              id(target6_y).publish_state(p6_y);
-            }
-            if (id(target6_angle).state != p6_angle) {
-              id(target6_angle).publish_state(p6_angle);
-            }
-            if (id(target6_distance).state != p6_distance) {
-              id(target6_distance).publish_state(p6_distance);
-            }
-            if (id(target6_active).state != p6_active) {
-              id(target6_active).publish_state(p6_active);
-            }
-
-            // Target 7
-            offset = (6 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p7_angle;
-            uint8_t p7_distance;
-            int8_t p7_x;
-            int8_t p7_y;
-            bool p7_active;
-            if (targets_detected >= 7) {
-              p7_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p7_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p7_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p7_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p7_angle - installation_angle;
-                p7_x = p7_distance * cos(angle);
-                p7_y = p7_distance * sin(angle);
-              }
-
-              p7_angle = (p7_angle * RADIANS_TO_DEGREES) - 90;
-              p7_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p7_x,
-                p7_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p7_x,
-                  p7_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p7_x,
-                  p7_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p7_x,
-                  p7_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p7_x,
-                  p7_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p7_x = 0;
-              p7_y = 0;
-              p7_angle = 0;
-              p7_distance = 0;
-              p7_active = false;
-            }
-
-            if (id(target7_x).state != p7_x) {
-              id(target7_x).publish_state(p7_x);
-            }
-            if (id(target7_y).state != p7_y) {
-              id(target7_y).publish_state(p7_y);
-            }
-            if (id(target7_angle).state != p7_angle) {
-              id(target7_angle).publish_state(p7_angle);
-            }
-            if (id(target7_distance).state != p7_distance) {
-              id(target7_distance).publish_state(p7_distance);
-            }
-            if (id(target7_active).state != p7_active) {
-              id(target7_active).publish_state(p7_active);
-            }
-
-            // Target 8
-            offset = (7 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p8_angle;
-            uint8_t p8_distance;
-            int8_t p8_x;
-            int8_t p8_y;
-            bool p8_active;
-            if (targets_detected >= 8) {
-              p8_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p8_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p8_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p8_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p8_angle - installation_angle;
-                p8_x = p8_distance * cos(angle);
-                p8_y = p8_distance * sin(angle);
-              }
-
-              p8_angle = (p8_angle * RADIANS_TO_DEGREES) - 90;
-              p8_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p8_x,
-                p8_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p8_x,
-                  p8_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p8_x,
-                  p8_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p8_x,
-                  p8_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p8_x,
-                  p8_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p8_x = 0;
-              p8_y = 0;
-              p8_angle = 0;
-              p8_distance = 0;
-              p8_active = false;
-            }
-
-            if (id(target8_x).state != p8_x) {
-              id(target8_x).publish_state(p8_x);
-            }
-            if (id(target8_y).state != p8_y) {
-              id(target8_y).publish_state(p8_y);
-            }
-            if (id(target8_angle).state != p8_angle) {
-              id(target8_angle).publish_state(p8_angle);
-            }
-            if (id(target8_distance).state != p8_distance) {
-              id(target8_distance).publish_state(p8_distance);
-            }
-            if (id(target8_active).state != p8_active) {
-              id(target8_active).publish_state(p8_active);
-            }
-
-            // Target 9
-            offset = (8 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p9_angle;
-            uint8_t p9_distance;
-            int8_t p9_x;
-            int8_t p9_y;
-            bool p9_active;
-            if (targets_detected >= 9) {
-              p9_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p9_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p9_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p9_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p9_angle - installation_angle;
-                p9_x = p9_distance * cos(angle);
-                p9_y = p9_distance * sin(angle);
-              }
-
-              p9_angle = (p9_angle * RADIANS_TO_DEGREES) - 90;
-              p9_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p9_x,
-                p9_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p9_x,
-                  p9_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p9_x,
-                  p9_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p9_x,
-                  p9_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p9_x,
-                  p9_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p9_x = 0;
-              p9_y = 0;
-              p9_angle = 0;
-              p9_distance = 0;
-              p9_active = false;
-            }
-
-            if (id(target9_x).state != p9_x) {
-              id(target9_x).publish_state(p9_x);
-            }
-            if (id(target9_y).state != p9_y) {
-              id(target9_y).publish_state(p9_y);
-            }
-            if (id(target9_angle).state != p9_angle) {
-              id(target9_angle).publish_state(p9_angle);
-            }
-            if (id(target9_distance).state != p9_distance) {
-              id(target9_distance).publish_state(p9_distance);
-            }
-            if (id(target9_active).state != p9_active) {
-              id(target9_active).publish_state(p9_active);
-            }
-
-            // Target 10
-            offset = (9 * 8); // Done like this for understanding - we have 8 possible properties per target so we use 0 indexing
-            uint8_t p10_angle;
-            uint8_t p10_distance;
-            int8_t p10_x;
-            int8_t p10_y;
-            bool p10_active;
-            if (targets_detected >= 10) {
-              p10_angle = bytes[15 + offset]; // Target horizontal angle ∂ (0~180 degrees), unsigned uchar type, unit degree
-              p10_distance = bytes[13 + offset] * 10; // Target distance d (0.0-25.5m), unsigned uchar type, unit 0.1m
-              p10_x = bytes[18 + offset] * 10; // Target X coordinate value, signed char type, unit 0.1m
-              p10_y = bytes[19 + offset] * 10; // Target Y coordinate value, signed char type, unit 0.1m
-
-              if (installation_angle != 0) {
-                float angle = p10_angle - installation_angle;
-                p10_x = p10_distance * cos(angle);
-                p10_y = p10_distance * sin(angle);
-              }
-
-              p10_angle = (p10_angle * RADIANS_TO_DEGREES) - 90;
-              p10_active = true;
-
-              if (point_in_polygon(
-                occupancy_mask_1_begin_x_value,
-                occupancy_mask_1_end_x_value,
-                occupancy_mask_1_begin_y_value,
-                occupancy_mask_1_end_y_value,
-                p10_x,
-                p10_y
-              )) {
-                occupancy_mask_1_count++;
-              } else {
-                if (point_in_polygon(
-                  zone1_begin_x_value,
-                  zone1_end_x_value,
-                  zone1_begin_y_value,
-                  zone1_end_y_value,
-                  p10_x,
-                  p10_y
-                )) {
-                  zone1_count++;
-                }
-                if (point_in_polygon(
-                  zone2_begin_x_value,
-                  zone2_end_x_value,
-                  zone2_begin_y_value,
-                  zone2_end_y_value,
-                  p10_x,
-                  p10_y
-                )) {
-                  zone2_count++;
-                }
-                if (point_in_polygon(
-                  zone3_begin_x_value,
-                  zone3_end_x_value,
-                  zone3_begin_y_value,
-                  zone3_end_y_value,
-                  p10_x,
-                  p10_y
-                )) {
-                  zone3_count++;
-                }
-                if (point_in_polygon(
-                  zone4_begin_x_value,
-                  zone4_end_x_value,
-                  zone4_begin_y_value,
-                  zone4_end_y_value,
-                  p10_x,
-                  p10_y
-                )) {
-                  zone4_count++;
-                }
-              }
-            } else {
-              p10_x = 0;
-              p10_y = 0;
-              p10_angle = 0;
-              p10_distance = 0;
-              p10_active = false;
-            }
-
-            if (id(target10_x).state != p10_x) {
-              id(target10_x).publish_state(p10_x);
-            }
-            if (id(target10_y).state != p10_y) {
-              id(target10_y).publish_state(p10_y);
-            }
-            if (id(target10_angle).state != p10_angle) {
-              id(target10_angle).publish_state(p10_angle);
-            }
-            if (id(target10_distance).state != p10_distance) {
-              id(target10_distance).publish_state(p10_distance);
-            }
-            if (id(target10_active).state != p10_active) {
-              id(target10_active).publish_state(p10_active);
-            }
-
+          
             // Update Zones
             id(zone1_occupancy).publish_state(zone1_count > 0);
             if (id(zone1_target_count).state != zone1_count) {
               id(zone1_target_count).publish_state(zone1_count);
             }
-
+          
             id(zone2_occupancy).publish_state(zone2_count > 0);
             if (id(zone2_target_count).state != zone2_count) {
               id(zone2_target_count).publish_state(zone2_count);
             }
-
+          
             id(zone3_occupancy).publish_state(zone3_count > 0);
             if (id(zone3_target_count).state != zone3_count) {
               id(zone3_target_count).publish_state(zone3_count);
             }
-
+          
             id(zone4_occupancy).publish_state(zone4_count > 0);
             if (id(zone4_target_count).state != zone4_count) {
               id(zone4_target_count).publish_state(zone4_count);
             }
-
+          
             // Update Occupancy Mask
             if (id(occupancy_mask_1_target_count).state != occupancy_mask_1_count) {
               id(occupancy_mask_1_target_count).publish_state(occupancy_mask_1_count);
             }
-
+          
             // Update Occupancy
             id(occupancy).publish_state(targets_detected > occupancy_mask_1_count);
-
+          
             return;
           }
-
-external_components:
-  - source:
-      type: git
-      url: https://github.com/MichaKersloot/esphome_custom_components
-    components: [ esp32_camera ]
-
-esp32_camera:
-  external_clock:
-    pin: GPIO15
-    frequency: 20MHz
-  i2c_pins:
-    sda: GPIO4
-    scl: GPIO5
-  data_pins: [GPIO11, GPIO9, GPIO8, GPIO10, GPIO12, GPIO18, GPIO17, GPIO16]
-  vsync_pin: GPIO6
-  href_pin: GPIO7
-  pixel_clock_pin: GPIO13
-
-  # Image settings
-  name: My Camera
