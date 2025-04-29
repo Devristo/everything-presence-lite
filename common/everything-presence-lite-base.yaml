@@ -7,7 +7,9 @@ esphome:
     name: EverythingSmartTechnology.Everything Presence Lite
     version: "1.2.2"
   platformio_options:
-    build_flags: -DBOARD_HAS_PSRAM
+    build_flags: "-DBOARD_HAS_PSRAM -std=gnu++17"
+    build_unflags: "-std=gnu++11"
+
     board_build.arduino.memory_type: qio_opi
 
 esp32:
@@ -42,6 +44,9 @@ wifi:
       ssid: "Hoolty Booth Sensor"
       password: "hooltybooth"
 improv_serial:
+
+web_server:
+  port: 80
 
 #i2c:
 #-  id: bus_a

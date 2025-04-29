@@ -1,13 +1,11 @@
 import esphome.codegen as cg
-from esphome.components import sensor
 import esphome.config_validation as cv
+from esphome.components import sensor
 from esphome.const import (
     CONF_ANGLE,
     CONF_DISTANCE,
-    CONF_RESOLUTION,
-    CONF_SPEED,
     DEVICE_CLASS_DISTANCE,
-    DEVICE_CLASS_SPEED,
+    UNIT_CENTIMETER,
     UNIT_DEGREES,
     UNIT_MILLIMETER,
 )
@@ -16,6 +14,8 @@ from . import CONF_LD6001_ID, LD6001Component
 
 DEPENDENCIES = ["ld6001"]
 
+CONF_PITCH_ANGLE = "pitch_angle"
+CONF_HORIZONTAL_ANGLE = "horizontal_angle"
 CONF_MOVING_TARGET_COUNT = "moving_target_count"
 CONF_STILL_TARGET_COUNT = "still_target_count"
 CONF_TARGET_COUNT = "target_count"
@@ -27,6 +27,7 @@ ICON_ACCOUNT_SWITCH = "mdi:account-switch"
 ICON_ALPHA_X_BOX_OUTLINE = "mdi:alpha-x-box-outline"
 ICON_ALPHA_Y_BOX_OUTLINE = "mdi:alpha-y-box-outline"
 ICON_FORMAT_TEXT_ROTATION_ANGLE_UP = "mdi:format-text-rotation-angle-up"
+ICON_ANGLE_ACUTE = "mdi:angle-acute"
 ICON_HUMAN_GREETING_PROXIMITY = "mdi:human-greeting-proximity"
 ICON_MAP_MARKER_ACCOUNT = "mdi:map-marker-account"
 ICON_MAP_MARKER_DISTANCE = "mdi:map-marker-distance"
@@ -59,21 +60,25 @@ CONFIG_SCHEMA = CONFIG_SCHEMA.extend(
             {
                 cv.Optional(CONF_X): sensor.sensor_schema(
                     device_class=DEVICE_CLASS_DISTANCE,
-                    unit_of_measurement=UNIT_MILLIMETER,
+                    unit_of_measurement=UNIT_CENTIMETER,
                     icon=ICON_ALPHA_X_BOX_OUTLINE,
                 ),
                 cv.Optional(CONF_Y): sensor.sensor_schema(
                     device_class=DEVICE_CLASS_DISTANCE,
-                    unit_of_measurement=UNIT_MILLIMETER,
+                    unit_of_measurement=UNIT_CENTIMETER,
                     icon=ICON_ALPHA_Y_BOX_OUTLINE,
                 ),
-                cv.Optional(CONF_ANGLE): sensor.sensor_schema(
+                cv.Optional(CONF_PITCH_ANGLE): sensor.sensor_schema(
                     unit_of_measurement=UNIT_DEGREES,
                     icon=ICON_FORMAT_TEXT_ROTATION_ANGLE_UP,
                 ),
+                cv.Optional(CONF_HORIZONTAL_ANGLE): sensor.sensor_schema(
+                    unit_of_measurement=UNIT_DEGREES,
+                    icon=ICON_ANGLE_ACUTE,
+                ),
                 cv.Optional(CONF_DISTANCE): sensor.sensor_schema(
                     device_class=DEVICE_CLASS_DISTANCE,
-                    unit_of_measurement=UNIT_MILLIMETER,
+                    unit_of_measurement=UNIT_CENTIMETER,
                     icon=ICON_MAP_MARKER_DISTANCE,
                 ),
             }
@@ -96,6 +101,10 @@ CONFIG_SCHEMA = CONFIG_SCHEMA.extend(
 async def to_code(config):
     ld6001_component = await cg.get_variable(config[CONF_LD6001_ID])
 
+    if target_count_config := config.get(CONF_TARGET_COUNT):
+        sens = await sensor.new_sensor(target_count_config)
+        cg.add(ld6001_component.set_target_count_sensor(sens))
+
     for n in range(MAX_TARGETS):
         if target_conf := config.get(f"target_{n + 1}"):
             if x_config := target_conf.get(CONF_X):
@@ -104,9 +113,12 @@ async def to_code(config):
             if y_config := target_conf.get(CONF_Y):
                 sens = await sensor.new_sensor(y_config)
                 cg.add(ld6001_component.set_move_y_sensor(n, sens))
-            if angle_config := target_conf.get(CONF_ANGLE):
+            if angle_config := target_conf.get(CONF_PITCH_ANGLE):
                 sens = await sensor.new_sensor(angle_config)
-                cg.add(ld6001_component.set_move_angle_sensor(n, sens))
+                cg.add(ld6001_component.set_move_pitch_angle_sensor(n, sens))
+            if angle_config := target_conf.get(CONF_HORIZONTAL_ANGLE):
+                sens = await sensor.new_sensor(angle_config)
+                cg.add(ld6001_component.set_move_horizontal_angle_sensor(n, sens))
             if distance_config := target_conf.get(CONF_DISTANCE):
                 sens = await sensor.new_sensor(distance_config)
                 cg.add(ld6001_component.set_move_distance_sensor(n, sens))

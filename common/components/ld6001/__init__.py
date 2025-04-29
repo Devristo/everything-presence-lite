@@ -36,7 +36,7 @@ FINAL_VALIDATE_SCHEMA = uart.final_validate_device_schema(
     "ld6001",
     require_tx=True,
     require_rx=True,
-    parity="NONE",
+    parity="EVEN",
     stop_bits=1,
 )
 
