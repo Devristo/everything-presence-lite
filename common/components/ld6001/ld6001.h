@@ -42,10 +42,18 @@ static const uint16_t MAX_LINE_LENGTH = 1024;          // Max characters for ser
 static const uint8_t MAX_TARGETS = 10;               // Max 3 Targets in LD6001
 static const uint8_t MAX_ZONES = 4;                 // Max 3 Zones in LD6001
 
-// Target coordinate struct
 struct Target {
+  uint8_t id;
+  uint8_t pitch_angle;
+  uint8_t horizontal_angle;
+  uint8_t distance;
   int16_t x;
   int16_t y;
+};
+
+struct TargetInfo {
+  uint8_t targets;
+  Target target_data[MAX_TARGETS];
 };
 
 // Zone coordinate struct
@@ -100,7 +108,7 @@ class LD6001Component : public Component, public uart::UARTDevice {
 
   void read_version_frame(uint8_t *buffer);
   void read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length);
-  Target target_info_[MAX_TARGETS];
+  TargetInfo target_info_;
   Zone zone_config_[MAX_ZONES];
   uint8_t buffer_pos_ = 0;  // where to resume processing/populating buffer
   uint8_t buffer_data_[MAX_LINE_LENGTH];

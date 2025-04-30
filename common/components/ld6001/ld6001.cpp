@@ -1,5 +1,6 @@
 #include "ld6001.h"
 #include <utility>
+#include "esphome/components/mqtt/mqtt_client.h"
 #ifdef USE_NUMBER
 #include "esphome/components/number/number.h"
 #endif
@@ -30,11 +31,6 @@ void LD6001Component::setup() {
 
 void LD6001Component::dump_config() {
   ESP_LOGCONFIG(TAG, "HLK-LD6001 Human motion tracking radar module:");
-#ifdef USE_BINARY_SENSOR
-  LOG_BINARY_SENSOR("  ", "TargetBinarySensor", this->target_binary_sensor_);
-  LOG_BINARY_SENSOR("  ", "MovingTargetBinarySensor", this->moving_target_binary_sensor_);
-  LOG_BINARY_SENSOR("  ", "StillTargetBinarySensor", this->still_target_binary_sensor_);
-#endif
 #ifdef USE_SENSOR
   LOG_SENSOR("  ", "TargetCountSensor", this->target_count_sensor_);
   for (sensor::Sensor *s : this->move_x_sensors_) {
@@ -160,6 +156,8 @@ void LD6001Component::read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint
     return;
   }
 
+  this->target_info_.targets = targets;
+
   for (int target = 0; target < MAX_TARGETS; target++) {
      size_t offset = 12 + target * 8;
      uint8_t id = 0;
@@ -176,6 +174,37 @@ void LD6001Component::read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint
       horizontal_angle = buffer[offset + 3];
       coord_x = buffer[offset + 6] * 10 ;
       coord_y = buffer[offset + 7] * 10 ;
+     }
+
+     this->target_info_.target_data[target] = Target {
+      .id = id,
+      .pitch_angle = pitch_angle,
+      .horizontal_angle = horizontal_angle,
+      .distance = distance,
+      .x = coord_x,
+      .y = coord_y
+     };
+
+
+     if (mqtt::global_mqtt_client != nullptr) {
+      mqtt::global_mqtt_client->publish_json(
+        mqtt::global_mqtt_client->get_topic_prefix() + "/targets",
+        [&](JsonObject root){
+          
+          root["targets"] = this->target_info_.targets;
+          auto target_data = root.createNestedArray("target_data");
+
+          for (size_t i=0; i < this->target_info_.targets; i++) {
+            auto data = target_data.createNestedObject();
+            data["id"] = this->target_info_.target_data[i].id;
+            data["x"] = this->target_info_.target_data[i].x;
+            data["y"] = this->target_info_.target_data[i].y;
+            data["distance"] = this->target_info_.target_data[i].distance;
+            data["pitch_angle"] = this->target_info_.target_data[i].pitch_angle;
+            data["horizontal_angle"] = this->target_info_.target_data[i].horizontal_angle;
+          }
+        }
+      );
      }
 
      if (this->move_x_sensors_[target] != nullptr) {
