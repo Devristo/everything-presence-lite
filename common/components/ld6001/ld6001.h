@@ -85,7 +85,6 @@ class LD6001Component : public Component, public uart::UARTDevice {
   void set_throttle(uint16_t value) { this->throttle_ = value; };
   void read_all_info();
   void query_zone_info();
-  void readline_(int readch, uint8_t *buffer, uint8_t len);
 
 #ifdef USE_SENSOR
   void set_move_x_sensor(uint8_t target, sensor::Sensor *s);
@@ -99,6 +98,8 @@ class LD6001Component : public Component, public uart::UARTDevice {
  protected:
   void get_version_();
 
+  void read_version_frame(uint8_t *buffer);
+  void read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length);
   Target target_info_[MAX_TARGETS];
   Zone zone_config_[MAX_ZONES];
   uint8_t buffer_pos_ = 0;  // where to resume processing/populating buffer

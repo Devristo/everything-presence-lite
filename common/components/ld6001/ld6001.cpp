@@ -25,7 +25,7 @@ void LD6001Component::setup() {
   ESP_LOGCONFIG(TAG, "Setting up HLK-LD6001...");
   this->read_all_info();
 
-  this->set_interval("update", 500, [this]() { this->send_radar_request(); });
+  this->set_interval("update", 1000, [this]() { this->send_radar_request(); });
 }
 
 void LD6001Component::dump_config() {
@@ -62,117 +62,143 @@ void LD6001Component::dump_config() {
   ESP_LOGCONFIG(TAG, "  Firmware version : %s", const_cast<char *>(this->version_.c_str()));
 }
 
-void LD6001Component::loop() {
-  size_t available_bytes = 0;
+void printHex(uint8_t* buffer, size_t length) {
+  for (size_t i = 0; i < length; ++i) {
+    printf("%02x ", buffer[i]); // lowercase hex, two digits with leading zeros
+  }
+  printf("\n");
+}
 
-  while (available_bytes = this->available()) {
-    this->readline_(read(), this->buffer_data_, MAX_LINE_LENGTH);
+
+void LD6001Component::loop() {
+  while(this->available()) {
+    // Read bytes into internal buffer
+    uint8_t byte = this->read();
+
+    // Prevent overflow
+    if (this->buffer_pos_ >= MAX_LINE_LENGTH) {
+      ESP_LOGW(TAG, "Buffer overflow, resetting");
+      this->buffer_pos_ = 0;
+      continue;
+    }
+
+    this->buffer_data_[this->buffer_pos_++] = byte;
+
+    // Wait until we have at least a header (0x4D + message type)
+    if (this->buffer_pos_ < 2) {
+      continue;
+    }
+
+    // Check for valid start byte
+    if (this->buffer_data_[0] != 0x4D) {
+      memmove(this->buffer_data_, this->buffer_data_ + 1, --this->buffer_pos_);
+      continue;
+    }
+
+    // We now have a valid start byte + message type
+    uint8_t msg_type = this->buffer_data_[1];
+
+    if (msg_type == 0x11) {
+      const size_t total_len = 2 + 12; // header + version payload
+      if (this->buffer_pos_ < total_len) {
+        continue;
+      }
+
+      this->read_version_frame(this->buffer_data_);
+      this->buffer_pos_ = 0;  // Reset for next frame
+    } else if (msg_type == 0x62) {
+      // Wait until we have at least the radar header
+      if (this->buffer_pos_ < 2 + 10) {
+        continue;
+      }
+
+      uint8_t targets = this->buffer_data_[5];  // byte[3] in radar header
+      size_t total_len = 2 + 8 * targets;
+
+      if (this->buffer_pos_ < 12 + total_len) {
+        continue;
+      }
+
+      this->read_radar_frame(this->buffer_data_, this->buffer_pos_, total_len);
+      this->buffer_pos_ = 0;  // Reset for next frame
+    } else {
+      // Unknown message type — discard byte and shift
+      ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg_type);
+      memmove(this->buffer_data_, this->buffer_data_ + 1, --this->buffer_pos_);
+    }
   }
 }
 
-void LD6001Component::readline_(int readch, uint8_t *buffer, uint16_t len) {
-  ESP_LOGV(TAG, "Reading data");
+void LD6001Component::read_version_frame(uint8_t *buffer) {
 
-  // All messages from the device should start with 0x4D
-  if (readch != 0x4D) {
+  ESP_LOGV(TAG, "Handle module version information");
+  uint8_t software_version_minor = buffer[4];
+  uint8_t software_version_major = buffer[5];
+
+  uint8_t hardware_version_minor = buffer[6];
+  uint8_t hardware_version_major = buffer[7];
+
+  std::string version = str_sprintf("HW v%d.%02d / SW v%d.%02d", hardware_version_major, hardware_version_minor, software_version_major, software_version_minor);
+
+#ifdef USE_TEXT_SENSOR
+  if (this->version_text_sensor_ != nullptr) {
+    this->version_text_sensor_->publish_state(version);
+  }
+#endif
+}
+
+void LD6001Component::read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length) {
+  uint8_t fault_status = buffer[4];
+  uint8_t targets = buffer[5];
+
+  uint8_t checksum = buffer[11 + targets * 8 + 1];
+  uint8_t final = buffer[11 + targets * 8 + 2];
+
+  if (final != 0x4A){
+    std::string error = str_sprintf("Final byte not 0x4A: 0x%02X", final);
+    ESP_LOGW(TAG, error.c_str());
     return;
   }
 
-  uint8_t message_type = this->read();
+  for (int target = 0; target < MAX_TARGETS; target++) {
+     size_t offset = 12 + target * 8;
+     uint8_t id = 0;
+     uint8_t distance = 0;
+     uint8_t pitch_angle = 0;
+     uint8_t horizontal_angle = 0;
+     int8_t coord_x = 0;
+     int8_t coord_y = 0;
 
-  if (message_type == 0x11) {
-    optional<std::array<uint8_t, 12>> version_bytes = this->read_array<12>();
-
-    if (!version_bytes.has_value()) {
-      ESP_LOGW(TAG, "Could not read version bytes");
-      return;
-    }
-
-    ESP_LOGV(TAG, "Handle module version information");
-    uint8_t software_version_minor = version_bytes.value()[2];
-    uint8_t software_version_major = version_bytes.value()[3];
-
-    uint8_t hardware_version_minor = version_bytes.value()[4];
-    uint8_t hardware_version_major = version_bytes.value()[5];
-
-    std::string version = str_sprintf("HW v%d.%02d / SW v%d.%02d", hardware_version_major, hardware_version_minor, software_version_major, software_version_minor);
-
-    bool is_ready = buffer[this->buffer_pos_ - 13 + 9] == 0x00;
-
-    #ifdef USE_TEXT_SENSOR
-        if (this->version_text_sensor_ != nullptr) {
-          this->version_text_sensor_->publish_state(version);
-        }
-    #endif
-
-  } else if (message_type == 0x62) {
-    optional<std::array<uint8_t, 10>> radar_header = this->read_array<10>();
-    if (!radar_header.has_value()) {
-      ESP_LOGW(TAG, "Could not read version bytes");
-      return;
-    }
-
-    uint8_t fault_status = radar_header.value()[2];
-    uint8_t targets = radar_header.value()[3];
-    uint8_t length = targets * 8 + 2;
-
-    auto buffer_ptr = std::make_unique<uint8_t[]>(length);
-
-    if(!this->read_array(buffer_ptr.get(), length)) {
-      ESP_LOGW(TAG, "Could not read radar data");
-      return;
-    }
-
-     auto buffer = buffer_ptr.get();
-
-     uint8_t checksum = buffer[length - 2];
-     uint8_t final = buffer[length - 1];
-     
-     if (final != 0x4A){
-       std::string error = str_sprintf("Final byte not 0x4A: 0x%02X", final);
-       ESP_LOGW(TAG, error.c_str());
-       return;
+     if (target < targets) {
+      id = buffer[offset];
+      distance = buffer[offset + 1] * 10;
+      pitch_angle = buffer[offset + 2];
+      horizontal_angle = buffer[offset + 3];
+      coord_x = buffer[offset + 6] * 10 ;
+      coord_y = buffer[offset + 7] * 10 ;
      }
 
-     for (int target = 0; target < MAX_TARGETS; target++) {
-       uint8_t id = 0;
-       uint8_t distance = 0;
-       uint8_t pitch_angle = 0;
-       uint8_t horizontal_angle = 0;
-       uint8_t coord_x = 0;
-       uint8_t coord_y = 0;
-
-       if (target < targets) {
-        id = buffer[target * 8 + 0];
-        distance = buffer[target * 8 + 1] * 10;
-        pitch_angle = buffer[target * 8 + 2];
-        horizontal_angle = buffer[target * 8 + 3];
-        coord_x = buffer[target * 8 + 6] * 10 ;
-        coord_y = buffer[target * 8 + 7] * 10 ;
-       }
-
-       if (this->move_x_sensors_[target] != nullptr) {
-         this->move_x_sensors_[target]->publish_state(target < targets ? coord_x : NAN);
-       }
-
-       if (this->move_y_sensors_[target] != nullptr) {
-         this->move_y_sensors_[target]->publish_state(target < targets ? coord_y : NAN);
-       }
-       if(this->move_distance_sensors_[target] != nullptr) {
-         this->move_distance_sensors_[target]->publish_state(target < targets ? distance : NAN);
-       }
-       if(this->move_pitch_angle_sensors_[target] != nullptr) {
-         this->move_pitch_angle_sensors_[target]->publish_state(target < targets ? pitch_angle : NAN);
-       }
-       if(this->move_horizontal_angle_sensors_[target] != nullptr) {
-         this->move_horizontal_angle_sensors_[target]->publish_state(target < targets ? horizontal_angle : NAN);
-       }
+     if (this->move_x_sensors_[target] != nullptr) {
+       this->move_x_sensors_[target]->publish_state(target < targets ? coord_x : NAN);
      }
 
-    // Target Count
-    if (this->target_count_sensor_ != nullptr) {
-      this->target_count_sensor_->publish_state(targets);
+     if (this->move_y_sensors_[target] != nullptr) {
+       this->move_y_sensors_[target]->publish_state(target < targets ? coord_y : NAN);
+     }
+     if(this->move_distance_sensors_[target] != nullptr) {
+       this->move_distance_sensors_[target]->publish_state(target < targets ? distance : NAN);
+     }
+     if(this->move_pitch_angle_sensors_[target] != nullptr) {
+       this->move_pitch_angle_sensors_[target]->publish_state(target < targets ? pitch_angle : NAN);
+     }
+     if(this->move_horizontal_angle_sensors_[target] != nullptr) {
+       this->move_horizontal_angle_sensors_[target]->publish_state(target < targets ? horizontal_angle : NAN);
+     }
     }
+
+  // Target Count
+  if (this->target_count_sensor_ != nullptr) {
+    this->target_count_sensor_->publish_state(targets);
   }
 }
 
