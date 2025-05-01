@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_set>
 #include <iomanip>
 #include <map>
 #include "esphome/components/uart/uart.h"
@@ -106,8 +107,11 @@ class LD6001Component : public Component, public uart::UARTDevice {
  protected:
   void get_version_();
 
+  void update_sensors();
   void read_version_frame(uint8_t *buffer);
   void read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length);
+  void update_last_seen(uint8_t target_id);
+
   TargetInfo target_info_;
   Zone zone_config_[MAX_ZONES];
   uint8_t buffer_pos_ = 0;  // where to resume processing/populating buffer
@@ -118,6 +122,11 @@ class LD6001Component : public Component, public uart::UARTDevice {
   uint32_t moving_presence_millis_ = 0;
   uint16_t throttle_ = 0;
   uint16_t timeout_ = 5;
+
+  std::unordered_set<uint8_t> announce_entry;
+  std::unordered_map<uint8_t, uint32_t> entry_times;
+  std::unordered_map<uint8_t, uint32_t> last_seen_times;
+
   uint8_t zone_type_ = 0;
   std::string version_{};
   std::string mac_{};
