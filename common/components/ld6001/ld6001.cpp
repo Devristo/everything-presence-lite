@@ -81,15 +81,6 @@ namespace esphome
       ESP_LOGCONFIG(TAG, "  Firmware version : %s", const_cast<char *>(this->version_.c_str()));
     }
 
-    void printHex(uint8_t *buffer, size_t length)
-    {
-      for (size_t i = 0; i < length; ++i)
-      {
-        printf("%02x ", buffer[i]); // lowercase hex, two digits with leading zeros
-      }
-      printf("\n");
-    }
-
     void LD6001Component::loop()
     {
       while (this->available())
@@ -150,7 +141,7 @@ namespace esphome
             continue;
           }
 
-          // printHex(this->buffer_data_, this->buffer_pos_);
+          // format_hex_pretty(this->buffer_data_, this->buffer_pos_);
           this->read_radar_frame(this->buffer_data_, this->buffer_pos_, total_len);
           this->buffer_pos_ = 0; // Reset for next frame
         }
@@ -194,19 +185,32 @@ namespace esphome
       }
       
       std::vector<std::tuple<uint8_t, uint32_t>> targets_left;
-      for (const auto& [key, value]: this->last_seen_times) {
-        if (current_millis - value > 5000) {
-          uint32_t first_seen = this->entry_times[key];
-          uint32_t dwell_time = (value - first_seen) / 1000;
+      while(!this->removed_targets.empty()) {
+        auto key = this->removed_targets.back();
+        this->removed_targets.pop_back();
 
-          ESP_LOGW(TAG, "Target %d left, first seen at %d, dwell time is %d seconds", key, first_seen, dwell_time);
-          targets_left.push_back(std::tuple<uint8_t, uint32_t>(key, dwell_time));
+
+
+        if (this->entry_times.find(key) == this->entry_times.end()) {
+          ESP_LOGW(TAG, "Inconsistency detected: Target %d has a last_seen_time but no entry_time", key);
+          continue; // Skip processing this target
         }
+
+        uint32_t last_seen_time = this->last_seen_times[key];
+        uint32_t first_seen = this->entry_times[key];
+        uint32_t dwell_time = (last_seen_time - first_seen) / 1000;
+
+        ESP_LOGW(TAG, "Target %d left, first seen at %d, dwell time is %d seconds", key, first_seen, dwell_time);
+        targets_left.push_back(std::tuple<uint8_t, uint32_t>(key, dwell_time));
+        
+        this->last_seen_times.erase(key);
+        this->entry_times.erase(key);
       }
 
-      for (const auto& [id, dwell_time] : targets_left) {
-        this->entry_times.erase(id);
-        this->last_seen_times.erase(id);
+      // Target Count
+      if (this->target_count_sensor_ != nullptr)
+      {
+        this->target_count_sensor_->publish_state(this->target_info_.targets);
       }
 
 
@@ -318,8 +322,13 @@ namespace esphome
         return;
       }
 
-      this->target_info_.targets = targets;
 
+      std::unordered_set<uint8_t> missing_targets;
+      for (int target = 0; target < this->target_info_.targets; target++) {
+        missing_targets.insert(this->target_info_.target_data[target].id);
+      }
+
+      this->target_info_.targets = targets;
       for (int target = 0; target < MAX_TARGETS; target++)
       {
         size_t offset = 12 + target * 8;
@@ -339,6 +348,7 @@ namespace esphome
           coord_x = buffer[offset + 6] * 10;
           coord_y = buffer[offset + 7] * 10;
           this->update_last_seen(id);
+          missing_targets.erase(id);
         }
 
         this->target_info_.target_data[target] = Target{
@@ -350,10 +360,8 @@ namespace esphome
             .y = coord_y};
       }
 
-      // Target Count
-      if (this->target_count_sensor_ != nullptr)
-      {
-        this->target_count_sensor_->publish_state(targets);
+      for (const auto id: missing_targets) {
+        this->removed_targets.push_back(id);
       }
     }
 

@@ -112,7 +112,7 @@ class LD6001Component : public Component, public uart::UARTDevice {
   void read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length);
   void update_last_seen(uint8_t target_id);
 
-  TargetInfo target_info_;
+  TargetInfo target_info_ = {};
   Zone zone_config_[MAX_ZONES];
   uint8_t buffer_pos_ = 0;  // where to resume processing/populating buffer
   uint8_t buffer_data_[MAX_LINE_LENGTH];
@@ -124,6 +124,7 @@ class LD6001Component : public Component, public uart::UARTDevice {
   uint16_t timeout_ = 5;
 
   std::unordered_set<uint8_t> announce_entry;
+  std::deque<uint8_t> removed_targets;
   std::unordered_map<uint8_t, uint32_t> entry_times;
   std::unordered_map<uint8_t, uint32_t> last_seen_times;
 
