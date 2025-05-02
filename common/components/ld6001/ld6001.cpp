@@ -27,6 +27,38 @@ namespace esphome
       return sum;
     }
 
+    void announce_mqtt_target_enter(uint8_t target_id) {
+      #ifdef USE_MQTT
+      if (mqtt::global_mqtt_client == nullptr) {
+        return;
+      }
+
+      mqtt::global_mqtt_client->publish_json(
+        mqtt::global_mqtt_client->get_topic_prefix() + "/target_entered",
+        [&](JsonObject root)
+        {
+          root["target_id"] = target_id;
+        }
+      );
+      #endif
+    }
+
+    void announce_mqtt_target_left(uint8_t target_id, uint32_t dwell_time) {
+      #ifdef USE_MQTT
+      if (mqtt::global_mqtt_client == nullptr) {
+        return;
+      }
+
+      mqtt::global_mqtt_client->publish_json(
+        mqtt::global_mqtt_client->get_topic_prefix() + "/target_left",
+        [&](JsonObject root)
+        {
+          root["id"] = target_id;
+          root["dwell_time"] = dwell_time;
+        }
+      );
+      #endif
+    }
 
     static const char *const TAG = "ld6001";
 
@@ -34,15 +66,12 @@ namespace esphome
     static const std::array<uint8_t, 12> CMD_RADAR_REQUEST_NORMAL = {0x44, 0x62, 0x08, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     static const std::array<uint8_t, 12> CMD_RADAR_REQUEST_PRECISE = {0x44, 0x62, 0x08, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-    LD6001Component::LD6001Component() {}
+    LD6001Component::LD6001Component(): PollingComponent(500) {}
 
     void LD6001Component::setup()
     {
       ESP_LOGCONFIG(TAG, "Setting up HLK-LD6001...");
       this->read_all_info();
-
-      this->set_interval("update", 500, [this]()
-                         { this->send_radar_request(); });
     }
 
     void LD6001Component::dump_config()
@@ -152,7 +181,10 @@ namespace esphome
           memmove(this->buffer_data_, this->buffer_data_ + 1, --this->buffer_pos_);
         }
       }
+    }
 
+    void LD6001Component::update() {
+      this->send_radar_request();
       this->update_sensors();
     }
 
@@ -163,33 +195,23 @@ namespace esphome
          Reduce data update rate to prevent home assistant database size grow fast
       */
       int32_t current_millis = millis();
-      if (current_millis - last_periodic_millis_ < this->throttle_)
+      if (current_millis - last_periodic_millis_ < this->throttle_) {
         return;
+      }
+
       last_periodic_millis_ = current_millis;
 
       
-      std::vector<uint8_t> targets_entered;
-      for (const auto& key: this->announce_entry) {
-        uint32_t entry_time = this->entry_times[key];
-
-        bool entered_a_while_ago = current_millis - entry_time > 5000;
-        bool recently_seen = current_millis - this->last_seen_times[key] < 2000;
-
-        if (entered_a_while_ago && recently_seen) {
-          targets_entered.push_back(key);
-        }
+      while (!this->announce_entry.empty()) {
+        auto target_id = this->announce_entry.back();
+        this->announce_entry.pop_back();
+        announce_mqtt_target_enter(target_id);
       }
 
-      for (const auto& key: targets_entered) {
-        this->announce_entry.erase(key);
-      }
-      
       std::vector<std::tuple<uint8_t, uint32_t>> targets_left;
       while(!this->removed_targets.empty()) {
         auto key = this->removed_targets.back();
         this->removed_targets.pop_back();
-
-
 
         if (this->entry_times.find(key) == this->entry_times.end()) {
           ESP_LOGW(TAG, "Inconsistency detected: Target %d has a last_seen_time but no entry_time", key);
@@ -201,7 +223,7 @@ namespace esphome
         uint32_t dwell_time = (last_seen_time - first_seen) / 1000;
 
         ESP_LOGW(TAG, "Target %d left, first seen at %d, dwell time is %d seconds", key, first_seen, dwell_time);
-        targets_left.push_back(std::tuple<uint8_t, uint32_t>(key, dwell_time));
+        announce_mqtt_target_left(key, dwell_time);
         
         this->last_seen_times.erase(key);
         this->entry_times.erase(key);
@@ -216,26 +238,6 @@ namespace esphome
 
       if (mqtt::global_mqtt_client != nullptr)
       {
-        for (const auto& [id, dwell_time] : targets_left) {
-          mqtt::global_mqtt_client->publish_json(
-            mqtt::global_mqtt_client->get_topic_prefix() + "/target_left",
-            [&](JsonObject root)
-            {
-              root["id"] = id;
-              root["dwell_time"] = dwell_time;
-            }
-          );
-        }
-
-        for (const auto id : targets_entered) {
-          mqtt::global_mqtt_client->publish_json(
-            mqtt::global_mqtt_client->get_topic_prefix() + "/target_entered",
-            [&](JsonObject root)
-            {
-              root["id"] = id;
-            }
-          );
-        }
 
         mqtt::global_mqtt_client->publish_json(
             mqtt::global_mqtt_client->get_topic_prefix() + "/targets",
@@ -370,7 +372,7 @@ namespace esphome
       
       if (this->entry_times.find(target_id) == this->entry_times.end()) {
         ESP_LOGW(TAG, "Target %d entered view", target_id);
-        this->announce_entry.insert(target_id);
+        this->announce_entry.push_back(target_id);
         this->entry_times[target_id] = now;
       }
 

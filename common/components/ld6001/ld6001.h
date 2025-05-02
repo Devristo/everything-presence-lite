@@ -74,7 +74,7 @@ struct ZoneOfNumbers {
 };
 #endif
 
-class LD6001Component : public Component, public uart::UARTDevice {
+class LD6001Component : public PollingComponent, public uart::UARTDevice {
 #ifdef USE_SENSOR
   SUB_SENSOR(target_count)
 #endif
@@ -89,6 +89,7 @@ class LD6001Component : public Component, public uart::UARTDevice {
   void setup() override;
   void dump_config() override;
   void loop() override;
+  void update() override;
 
   void send_radar_request();
   void set_throttle(uint16_t value) { this->throttle_ = value; };
@@ -123,7 +124,7 @@ class LD6001Component : public Component, public uart::UARTDevice {
   uint16_t throttle_ = 0;
   uint16_t timeout_ = 5;
 
-  std::unordered_set<uint8_t> announce_entry;
+  std::deque<uint8_t> announce_entry;
   std::deque<uint8_t> removed_targets;
   std::unordered_map<uint8_t, uint32_t> entry_times;
   std::unordered_map<uint8_t, uint32_t> last_seen_times;

@@ -8,7 +8,7 @@ CODEOWNERS = ["@hareeshmu"]
 MULTI_CONF = True
 
 ld6001_ns = cg.esphome_ns.namespace("ld6001")
-LD6001Component = ld6001_ns.class_("LD6001Component", cg.Component, uart.UARTDevice)
+LD6001Component = ld6001_ns.class_("LD6001Component", cg.PollingComponent, uart.UARTDevice)
 
 CONF_LD6001_ID = "ld6001_id"
 
@@ -23,7 +23,7 @@ CONFIG_SCHEMA = cv.All(
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
-    .extend(cv.COMPONENT_SCHEMA)
+    .extend(cv.polling_component_schema("500ms"))
 )
 
 LD6001BaseSchema = cv.Schema(

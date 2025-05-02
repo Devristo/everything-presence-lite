@@ -58,6 +58,7 @@ ld6001:
   id: ld6001_radar
   throttle: 1000ms
   uart_id: uart_2
+  update_interval: 200ms
 
 sensor:
   - platform: ld6001
