@@ -66,7 +66,7 @@ namespace esphome
     static const std::array<uint8_t, 12> CMD_RADAR_REQUEST_NORMAL = {0x44, 0x62, 0x08, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     static const std::array<uint8_t, 12> CMD_RADAR_REQUEST_PRECISE = {0x44, 0x62, 0x08, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-    LD6001Component::LD6001Component(): PollingComponent(500) {}
+    LD6001Component::LD6001Component(): PollingComponent(500), frame_iter_(FrameIterator(*this)) {}
 
     void LD6001Component::setup()
     {
@@ -112,73 +112,19 @@ namespace esphome
 
     void LD6001Component::loop()
     {
-      while (this->available())
-      {
-        // Read bytes into internal buffer
-        uint8_t byte = this->read();
-
-        // Prevent overflow
-        if (this->buffer_pos_ >= MAX_LINE_LENGTH)
-        {
-          ESP_LOGW(TAG, "Buffer overflow, resetting");
-          this->buffer_pos_ = 0;
-          continue;
-        }
-
-        this->buffer_data_[this->buffer_pos_++] = byte;
-
-        // Wait until we have at least a header (0x4D + message type)
-        if (this->buffer_pos_ < 2)
-        {
-          continue;
-        }
-
-        // Check for valid start byte
-        if (this->buffer_data_[0] != 0x4D)
-        {
-          memmove(this->buffer_data_, this->buffer_data_ + 1, --this->buffer_pos_);
-          continue;
-        }
-
-        // We now have a valid start byte + message type
-        uint8_t msg_type = this->buffer_data_[1];
-
-        if (msg_type == 0x11)
-        {
-          const size_t total_len = 2 + 12; // header + version payload
-          if (this->buffer_pos_ < total_len)
-          {
-            continue;
-          }
-
-          this->read_version_frame(this->buffer_data_);
-          this->buffer_pos_ = 0; // Reset for next frame
-        }
-        else if (msg_type == 0x62)
-        {
-          // Wait until we have at least the radar header
-          if (this->buffer_pos_ < 2 + 10)
-          {
-            continue;
-          }
-
-          uint8_t targets = this->buffer_data_[5]; // byte[3] in radar header
-          size_t total_len = 2 + 8 * targets;
-
-          if (this->buffer_pos_ < 12 + total_len)
-          {
-            continue;
-          }
-
-          // format_hex_pretty(this->buffer_data_, this->buffer_pos_);
-          this->read_radar_frame(this->buffer_data_, this->buffer_pos_, total_len);
-          this->buffer_pos_ = 0; // Reset for next frame
-        }
-        else
-        {
-          // Unknown message type — discard byte and shift
-          ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg_type);
-          memmove(this->buffer_data_, this->buffer_data_ + 1, --this->buffer_pos_);
+      while (frame_iter_.next()) {
+        const auto& frame = frame_iter_.value();
+        uint8_t msg_type = frame[1];
+        switch (msg_type) {
+          case 0x11:
+            this->read_version_frame(frame.data(), frame.size());
+            break;
+          case 0x62:
+            this->read_radar_frame(frame.data(), frame.size());
+            break;
+          default:
+            ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg_type);
+            break;
         }
       }
     }
@@ -289,7 +235,7 @@ namespace esphome
       #endif
     }
 
-    void LD6001Component::read_version_frame(uint8_t *buffer)
+    void LD6001Component::read_version_frame(const uint8_t *buffer, const size_t length)
     {
 
       ESP_LOGV(TAG, "Handle module version information");
@@ -309,7 +255,7 @@ namespace esphome
 #endif
     }
 
-    void LD6001Component::read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length)
+    void LD6001Component::read_radar_frame(const uint8_t *buffer, const size_t length)
     {
       uint8_t fault_status = buffer[4];
       uint8_t targets = buffer[5];

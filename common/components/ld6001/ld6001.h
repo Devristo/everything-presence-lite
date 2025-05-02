@@ -8,6 +8,8 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
+#include "frame_iterator.h"
+
 #ifdef USE_SENSOR
 #include "esphome/components/sensor/sensor.h"
 #endif
@@ -109,8 +111,8 @@ class LD6001Component : public PollingComponent, public uart::UARTDevice {
   void get_version_();
 
   void update_sensors();
-  void read_version_frame(uint8_t *buffer);
-  void read_radar_frame(uint8_t *buffer, uint8_t buffer_pos, uint8_t total_length);
+  void read_version_frame(const uint8_t *buffer, const size_t length);
+  void read_radar_frame(const uint8_t *buffer, const size_t length);
   void update_last_seen(uint8_t target_id);
 
   TargetInfo target_info_ = {};
@@ -121,13 +123,15 @@ class LD6001Component : public PollingComponent, public uart::UARTDevice {
   uint32_t presence_millis_ = 0;
   uint32_t still_presence_millis_ = 0;
   uint32_t moving_presence_millis_ = 0;
-  uint16_t throttle_ = 0;
+  uint16_t throttle_ = 1000;
   uint16_t timeout_ = 5;
 
   std::deque<uint8_t> announce_entry;
   std::deque<uint8_t> removed_targets;
   std::unordered_map<uint8_t, uint32_t> entry_times;
   std::unordered_map<uint8_t, uint32_t> last_seen_times;
+
+  FrameIterator frame_iter_;
 
   uint8_t zone_type_ = 0;
   std::string version_{};
