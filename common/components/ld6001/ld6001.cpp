@@ -112,6 +112,7 @@ namespace esphome
 
     void LD6001Component::loop()
     {
+      auto start = millis();
       while (frame_iter_.next()) {
         const auto& frame = frame_iter_.value();
         uint8_t msg_type = frame[1];
@@ -126,6 +127,11 @@ namespace esphome
             ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg_type);
             break;
         }
+      }
+
+      auto delta = millis() - start;
+      if (delta > 5) {
+        ESP_LOGW(TAG, "Frame processing took %d ms", delta);
       }
     }
 
@@ -176,11 +182,10 @@ namespace esphome
       }
 
       // Target Count
-      if (this->target_count_sensor_ != nullptr)
+      if (this->target_count_sensor_ != nullptr && this->target_info_.targets != this->target_count_sensor_->state)
       {
         this->target_count_sensor_->publish_state(this->target_info_.targets);
       }
-
 
       if (mqtt::global_mqtt_client != nullptr)
       {
@@ -205,32 +210,30 @@ namespace esphome
             });
       }
 
+      auto maybe_publish = [](auto* sensor, float new_value) {
+        if (sensor == nullptr) return;
+        float old_value = sensor->state;
+        if ((std::isnan(old_value) && !std::isnan(new_value)) ||
+            (!std::isnan(old_value) && (old_value != new_value))) {
+          sensor->publish_state(new_value);
+        }
+      };
+
       uint8_t targets = this->target_info_.targets;
       for (size_t i = 0; i < MAX_TARGETS; i++)
       {
         Target target = this->target_info_.target_data[i];
+        auto coord_x = i < targets ? target.x : NAN;
+        auto coord_y = i < targets ? target.y : NAN;
+        auto distance = i < targets ? target.distance : NAN;
+        auto pitch_angle = i < targets ? target.pitch_angle : NAN;
+        auto horizontal_angle = i < targets ? target.horizontal_angle : NAN;
 
-        if (this->move_x_sensors_[i] != nullptr)
-        {
-          this->move_x_sensors_[i]->publish_state(i < targets ? target.x : NAN);
-        }
-
-        if (this->move_y_sensors_[i] != nullptr)
-        {
-          this->move_y_sensors_[i]->publish_state(i < targets ? target.y : NAN);
-        }
-        if (this->move_distance_sensors_[i] != nullptr)
-        {
-          this->move_distance_sensors_[i]->publish_state(i < targets ? target.distance : NAN);
-        }
-        if (this->move_pitch_angle_sensors_[i] != nullptr)
-        {
-          this->move_pitch_angle_sensors_[i]->publish_state(i < targets ? target.pitch_angle : NAN);
-        }
-        if (this->move_horizontal_angle_sensors_[i] != nullptr)
-        {
-          this->move_horizontal_angle_sensors_[i]->publish_state(i < targets ? target.horizontal_angle : NAN);
-        }
+        maybe_publish(this->move_x_sensors_[i], coord_x);
+        maybe_publish(this->move_y_sensors_[i], coord_y);
+        maybe_publish(this->move_distance_sensors_[i], distance);
+        maybe_publish(this->move_pitch_angle_sensors_[i], pitch_angle);
+        maybe_publish(this->move_horizontal_angle_sensors_[i], horizontal_angle);
       }
       #endif
     }

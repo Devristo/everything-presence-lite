@@ -7,14 +7,16 @@ namespace esphome
 {
   namespace ld6001
   {
-    
 
     class FrameIterator
     {
       public:
       using value_type = std::vector<uint8_t>;
 
-      explicit FrameIterator(uart::UARTDevice &stream) : stream_(&stream) {}
+      explicit FrameIterator(uart::UARTDevice &stream) : stream_(&stream) {
+        current_.reserve(256);
+        buffer_.reserve(256);
+      }
 
       // Fetch next frame if available
       bool next()
@@ -26,7 +28,7 @@ namespace esphome
 
         current_.clear();
 
-        while (const available_bytes = stream_->available())
+        while (stream_->available())
         {
           
           // Read from the stream if available

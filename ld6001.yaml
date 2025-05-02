@@ -5,6 +5,7 @@ esphome:
   platformio_options:
     build_flags: "-DBOARD_HAS_PSRAM -std=gnu++17"
     build_unflags: "-std=gnu++11"
+    board_build.arduino.memory_type: qio_opi
 
 esp32:
   board: esp32-s3-devkitc-1
