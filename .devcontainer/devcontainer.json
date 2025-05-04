@@ -17,10 +17,11 @@
 			"extensions": [
 				"espressif.esp-idf-extension",
 		 		"ms-vscode.cmake-tools",
-			 	"ms-vscode.cpptools"
+			 	"ms-vscode.cpptools",
+				"platformio.platformio-ide"
 			]
 		}
-	}
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},

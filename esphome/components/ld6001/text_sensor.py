@@ -23,6 +23,7 @@ CONFIG_SCHEMA = cv.Schema(
     }
 )
 
+
 async def to_code(config):
     ld6001_component = await cg.get_variable(config[CONF_LD6001_ID])
     if version_config := config.get(CONF_VERSION):

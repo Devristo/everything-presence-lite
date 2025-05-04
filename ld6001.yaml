@@ -3,9 +3,9 @@ esphome:
   friendly_name: "Hoolty Booth Sensor"
   name_add_mac_suffix: True
   platformio_options:
-    build_flags: "-DBOARD_HAS_PSRAM -std=gnu++17"
+    build_flags: "-std=gnu++17"
     build_unflags: "-std=gnu++11"
-    board_build.arduino.memory_type: qio_opi
+    # board_build.arduino.memory_type: qio_opi
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -15,7 +15,6 @@ esp32:
 # Enable logging
 logger:
   level: WARN
-  hardware_uart: 'UART0'
 
 # Enable Home Assistant API
 api:
@@ -37,12 +36,12 @@ wifi:
 web_server:
   port: 80
 
-light:
-  - platform: status_led
-    name: ESP32 LED
-    pin: GPIO2
-    internal: False
-    restore_mode: ALWAYS_OFF
+# light:
+#   - platform: status_led
+#     name: ESP32 LED
+#     pin: GPIO35
+#     internal: False
+#     restore_mode: ALWAYS_OFF
 
 button:
   - platform: restart
@@ -53,12 +52,8 @@ external_components:
   # use all components from a local folder
   - source:
       type: local
-      path: ./common/components
+      path: ./esphome/components
     refresh: '0s'
-  - source:
-      type: git
-      url: https://github.com/MichaKersloot/esphome_custom_components
-    components: [ esp32_camera ]
 
 #esp32_camera:
 ##  resolution: "FHD"
@@ -79,8 +74,8 @@ external_components:
 
 uart:
   id: uart_2
-  tx_pin: GPIO47
-  rx_pin: GPIO21
+  tx_pin: GPIO2
+  rx_pin: GPIO1
   baud_rate: 9600
 #  port: '/dev/ttyUSB0'
   parity: EVEN
@@ -129,9 +124,61 @@ sensor:
         name: Target-2 Horizontal Angle
       distance:
         name: Target-2 Distance
+    zone_1:
+      target_count:
+        name: Zone-1 Target Count
+    zone_2:
+      target_count:
+        name: Zone-2 Target Count
+    zone_3:
+      target_count:
+        name: Zone-3 Target Count
+    zone_4:
+      target_count:
+        name: Zone-4 Target Count
 
 text_sensor:
   - platform: ld6001
     ld6001_id: ld6001_radar
     version:
       name: Version
+
+number:
+  - platform: ld6001
+    ld6001_id: ld6001_radar
+    zone_1:
+      x1:
+        name: Zone-1 X1
+      y1:
+        name: Zone-1 Y1
+      x2:
+        name: Zone-1 X2
+      y2:
+        name: Zone-1 Y2
+    zone_2:
+      x1:
+        name: Zone-2 X1
+      y1:
+        name: Zone-2 Y1
+      x2:
+        name: Zone-2 X2
+      y2:
+        name: Zone-2 Y2
+    zone_3:
+      x1:
+        name: Zone-3 X1
+      y1:
+        name: Zone-3 Y1
+      x2:
+        name: Zone-3 X2
+      y2:
+        name: Zone-3 Y2
+    zone_4:
+      x1:
+        name: Zone-4 X1
+      y1:
+        name: Zone-4 Y1
+      x2:
+        name: Zone-4 X2
+      y2:
+        name: Zone-4 Y2

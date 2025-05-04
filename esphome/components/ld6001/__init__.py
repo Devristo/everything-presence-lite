@@ -4,7 +4,6 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_THROTTLE
 
 DEPENDENCIES = ["uart"]
-CODEOWNERS = ["@hareeshmu"]
 MULTI_CONF = True
 
 ld6001_ns = cg.esphome_ns.namespace("ld6001")

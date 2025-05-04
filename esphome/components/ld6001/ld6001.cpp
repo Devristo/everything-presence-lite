@@ -9,25 +9,11 @@
 #endif
 #include "esphome/core/component.h"
 
-#define highbyte(val) (uint8_t)((val) >> 8)
-#define lowbyte(val) (uint8_t)((val) & 0xff)
-
 namespace esphome
 {
   namespace ld6001
   {
-    template <std::size_t N>
-    uint8_t get_checksum(const std::array<uint8_t, N> data) {
-      uint8_t sum = 0;
-
-      for (auto val : data) {
-          sum += val;
-      }
-
-      return sum;
-    }
-
-    void announce_mqtt_target_enter(uint8_t target_id) {
+    static void announce_mqtt_target_enter(uint8_t target_id) {
       #ifdef USE_MQTT
       if (mqtt::global_mqtt_client == nullptr) {
         return;
@@ -43,7 +29,7 @@ namespace esphome
       #endif
     }
 
-    void announce_mqtt_target_left(uint8_t target_id, uint32_t dwell_time) {
+    static void announce_mqtt_target_left(uint8_t target_id, uint32_t dwell_time) {
       #ifdef USE_MQTT
       if (mqtt::global_mqtt_client == nullptr) {
         return;
@@ -63,15 +49,15 @@ namespace esphome
     static const char *const TAG = "ld6001";
 
     static const std::array<uint8_t, 6> CMD_GET_VERSION = {0x44, 0x11, 0x00, 0x00, 0x55, 0x4B};
-    static const std::array<uint8_t, 12> CMD_RADAR_REQUEST_NORMAL = {0x44, 0x62, 0x08, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    static const std::array<uint8_t, 12> CMD_RADAR_REQUEST_PRECISE = {0x44, 0x62, 0x08, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
+    static const std::array<uint8_t, 14> CMD_RADAR_REQUEST_NORMAL = {0x44, 0x62, 0x08, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xBE, 0x4B};
+    static const std::array<uint8_t, 14> CMD_RADAR_REQUEST_PRECISE = {0x44, 0x62, 0x08, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCE, 0x4B};
+    
     LD6001Component::LD6001Component(): PollingComponent(500), frame_iter_(FrameIterator(*this)) {}
 
     void LD6001Component::setup()
     {
       ESP_LOGCONFIG(TAG, "Setting up HLK-LD6001...");
-      this->read_all_info();
+      this->send_version_request_();
     }
 
     void LD6001Component::dump_config()
@@ -118,10 +104,10 @@ namespace esphome
         uint8_t msg_type = frame[1];
         switch (msg_type) {
           case 0x11:
-            this->read_version_frame(frame.data(), frame.size());
+            this->read_version_frame_(frame);
             break;
           case 0x62:
-            this->read_radar_frame(frame.data(), frame.size());
+            this->read_radar_frame_(frame.data());
             break;
           default:
             ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg_type);
@@ -136,11 +122,17 @@ namespace esphome
     }
 
     void LD6001Component::update() {
-      this->send_radar_request();
-      this->update_sensors();
+      static int counter = 0;
+      this->send_radar_request_();
+
+      if ((counter++) % 100 == 0) {
+        this->send_version_request_();
+      }
+
+      this->update_sensors_();
     }
 
-    void LD6001Component::update_sensors()
+    void LD6001Component::update_sensors_()
     {
       #ifdef USE_SENSOR
       /*
@@ -154,31 +146,31 @@ namespace esphome
       last_periodic_millis_ = current_millis;
 
       
-      while (!this->announce_entry.empty()) {
-        auto target_id = this->announce_entry.back();
-        this->announce_entry.pop_back();
+      while (!this->announce_entry_.empty()) {
+        auto target_id = this->announce_entry_.back();
+        this->announce_entry_.pop_back();
         announce_mqtt_target_enter(target_id);
       }
 
       std::vector<std::tuple<uint8_t, uint32_t>> targets_left;
-      while(!this->removed_targets.empty()) {
-        auto key = this->removed_targets.back();
-        this->removed_targets.pop_back();
+      while(!this->removed_targets_.empty()) {
+        auto key = this->removed_targets_.back();
+        this->removed_targets_.pop_back();
 
-        if (this->entry_times.find(key) == this->entry_times.end()) {
+        if (this->entry_times_.find(key) == this->entry_times_.end()) {
           ESP_LOGW(TAG, "Inconsistency detected: Target %d has a last_seen_time but no entry_time", key);
           continue; // Skip processing this target
         }
 
-        uint32_t last_seen_time = this->last_seen_times[key];
-        uint32_t first_seen = this->entry_times[key];
+        uint32_t last_seen_time = this->last_seen_times_[key];
+        uint32_t first_seen = this->entry_times_[key];
         uint32_t dwell_time = (last_seen_time - first_seen) / 1000;
 
         ESP_LOGW(TAG, "Target %d left, first seen at %d, dwell time is %d seconds", key, first_seen, dwell_time);
         announce_mqtt_target_left(key, dwell_time);
         
-        this->last_seen_times.erase(key);
-        this->entry_times.erase(key);
+        this->last_seen_times_.erase(key);
+        this->entry_times_.erase(key);
       }
 
       // Target Count
@@ -235,20 +227,28 @@ namespace esphome
         maybe_publish(this->move_pitch_angle_sensors_[i], pitch_angle);
         maybe_publish(this->move_horizontal_angle_sensors_[i], horizontal_angle);
       }
+
+      for (size_t i = 0; i < MAX_ZONES; i++)
+      {
+        auto zone_target_count = this->zone_config_[i].target_count;
+        maybe_publish(this->zone_target_count_sensors_[i], zone_target_count);
+      }
       #endif
     }
 
-    void LD6001Component::read_version_frame(const uint8_t *buffer, const size_t length)
+    void LD6001Component::read_version_frame_(const std::vector<uint8_t> & buffer)
     {
 
       ESP_LOGV(TAG, "Handle module version information");
-      uint8_t software_version_minor = buffer[4];
-      uint8_t software_version_major = buffer[5];
-
-      uint8_t hardware_version_minor = buffer[6];
-      uint8_t hardware_version_major = buffer[7];
-
-      std::string version = str_sprintf("HW v%d.%02d / SW v%d.%02d", hardware_version_major, hardware_version_minor, software_version_major, software_version_minor);
+      StatusResponse status = StatusResponse::create(buffer);
+      
+      std::string version = str_sprintf(
+        "HW v%d.%02d / SW v%d.%02d",
+        status.hardware_version_major,
+        status.hardware_version_minor,
+        status.software_version_major,
+        status.software_version_minor
+      );
 
 #ifdef USE_TEXT_SENSOR
       if (this->version_text_sensor_ != nullptr)
@@ -258,7 +258,7 @@ namespace esphome
 #endif
     }
 
-    void LD6001Component::read_radar_frame(const uint8_t *buffer, const size_t length)
+    void LD6001Component::read_radar_frame_(const uint8_t *buffer)
     {
       uint8_t fault_status = buffer[4];
       uint8_t targets = buffer[5];
@@ -298,7 +298,7 @@ namespace esphome
           horizontal_angle = buffer[offset + 3];
           coord_x = buffer[offset + 6] * 10;
           coord_y = buffer[offset + 7] * 10;
-          this->update_last_seen(id);
+          this->update_last_seen_(id);
           missing_targets.erase(id);
         }
 
@@ -311,47 +311,83 @@ namespace esphome
             .y = coord_y};
       }
 
+      for (size_t index = 0; index < MAX_ZONES; ++index) {
+        auto &zone = this->zone_config_[index];
+        zone.target_count = 0;
+
+        for (int target = 0; target < targets; target++) {
+          auto target_id = this->target_info_.target_data[target].id;
+          auto coord_x = this->target_info_.target_data[target].x;
+          auto coord_y = this->target_info_.target_data[target].y;
+
+          if (zone.contains(coord_x, coord_y )) {
+            zone.target_count++;
+          }
+        }
+      }
+
       for (const auto id: missing_targets) {
-        this->removed_targets.push_back(id);
+        this->removed_targets_.push_back(id);
       }
     }
 
-    void LD6001Component::update_last_seen(uint8_t target_id) {
+    void LD6001Component::update_last_seen_(uint8_t target_id) {
       uint32_t now = millis();
       
-      if (this->entry_times.find(target_id) == this->entry_times.end()) {
+      if (this->entry_times_.find(target_id) == this->entry_times_.end()) {
         ESP_LOGW(TAG, "Target %d entered view", target_id);
-        this->announce_entry.push_back(target_id);
-        this->entry_times[target_id] = now;
+        this->announce_entry_.push_back(target_id);
+        this->entry_times_[target_id] = now;
       }
 
-      this->last_seen_times[target_id] = now;
-    }
-
-    // Read all info from LD6001 buffer
-    void LD6001Component::read_all_info()
-    {
-      this->get_version_();
+      this->last_seen_times_[target_id] = now;
     }
 
     // Get LD6001 firmware version
-    void LD6001Component::get_version_()
+    void LD6001Component::send_version_request_()
     {
-      ESP_LOGV(TAG, "Sending get version request");
+      ESP_LOGW(TAG, "Sending get version request");
       this->write_array(CMD_GET_VERSION);
     }
 
-    void LD6001Component::send_radar_request()
+    void LD6001Component::send_radar_request_()
     {
-      ESP_LOGV(TAG, "Sending precise radar request");
-
-      uint8_t checksum = get_checksum(CMD_RADAR_REQUEST_NORMAL);
-
+      ESP_LOGV(TAG, "Sending radar request");
       this->write_array(CMD_RADAR_REQUEST_NORMAL);
-      this->write_byte(checksum);
-      this->write_byte(0x4B);
     
     }
+
+
+#ifdef USE_NUMBER
+void LD6001Component::set_zone_coordinate(uint8_t zone) {
+  number::Number *x1sens = this->zone_numbers_[zone].x1;
+  number::Number *y1sens = this->zone_numbers_[zone].y1;
+  number::Number *x2sens = this->zone_numbers_[zone].x2;
+  number::Number *y2sens = this->zone_numbers_[zone].y2;
+  if (!x1sens->has_state() || !y1sens->has_state() || !x2sens->has_state() || !y2sens->has_state()) {
+    return;
+  }
+
+  ESP_LOGW(TAG, "Set new coordinates for zone %d: (%d, %d) (%d, %d)", zone,
+           static_cast<int>(x1sens->state), static_cast<int>(y1sens->state),
+           static_cast<int>(x2sens->state), static_cast<int>(y2sens->state));
+
+  this->zone_config_[zone].x1 = static_cast<int>(x1sens->state);
+  this->zone_config_[zone].y1 = static_cast<int>(y1sens->state);
+  this->zone_config_[zone].x2 = static_cast<int>(x2sens->state);
+  this->zone_config_[zone].y2 = static_cast<int>(y2sens->state);
+}
+
+void LD6001Component::set_zone_numbers(uint8_t zone, number::Number *x1, number::Number *y1, number::Number *x2,
+                                       number::Number *y2) {
+  if (zone < MAX_ZONES) {
+    this->zone_numbers_[zone].x1 = x1;
+    this->zone_numbers_[zone].y1 = y1;
+    this->zone_numbers_[zone].x2 = x2;
+    this->zone_numbers_[zone].y2 = y2;
+  }
+}
+#endif
 
 #ifdef USE_SENSOR
     void LD6001Component::set_move_x_sensor(uint8_t target, sensor::Sensor *s) { this->move_x_sensors_[target] = s; }

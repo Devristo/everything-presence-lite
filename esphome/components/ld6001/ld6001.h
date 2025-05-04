@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unordered_set>
+#include <unordered_map>
 #include <iomanip>
 #include <map>
 #include "esphome/components/uart/uart.h"
@@ -65,6 +66,11 @@ struct Zone {
   int16_t y1 = 0;
   int16_t x2 = 0;
   int16_t y2 = 0;
+  uint8_t target_count = 0;
+
+  bool contains(const int16_t x, const int16_t y) const {
+    return (x >= this->x1 && x <= this->x2 && y >= this->y1 && y <= this->y2);
+  }
 };
 
 #ifdef USE_NUMBER
@@ -93,10 +99,7 @@ class LD6001Component : public PollingComponent, public uart::UARTDevice {
   void loop() override;
   void update() override;
 
-  void send_radar_request();
   void set_throttle(uint16_t value) { this->throttle_ = value; };
-  void read_all_info();
-  void query_zone_info();
 
 #ifdef USE_SENSOR
   void set_move_x_sensor(uint8_t target, sensor::Sensor *s);
@@ -107,18 +110,24 @@ class LD6001Component : public PollingComponent, public uart::UARTDevice {
   void set_zone_target_count_sensor(uint8_t zone, sensor::Sensor *s);
 #endif
 
- protected:
-  void get_version_();
+#ifdef USE_NUMBER
+  void set_zone_coordinate(uint8_t zone);
+  void set_zone_numbers(uint8_t zone, number::Number *x1, number::Number *y1, number::Number *x2, number::Number *y2);
+#endif
 
-  void update_sensors();
-  void read_version_frame(const uint8_t *buffer, const size_t length);
-  void read_radar_frame(const uint8_t *buffer, const size_t length);
-  void update_last_seen(uint8_t target_id);
+protected:
+  void send_version_request_();
+  void send_radar_request_();
+
+  void update_sensors_();
+  void read_version_frame_(const std::vector<uint8_t> &buffer);
+  void read_radar_frame_(const uint8_t *buffer);
+  void update_last_seen_(uint8_t target_id);
 
   TargetInfo target_info_ = {};
   Zone zone_config_[MAX_ZONES];
   uint8_t buffer_pos_ = 0;  // where to resume processing/populating buffer
-  uint8_t buffer_data_[MAX_LINE_LENGTH];
+  uint8_t buffer_data_[MAX_LINE_LENGTH] = {};
   uint32_t last_periodic_millis_ = 0;
   uint32_t presence_millis_ = 0;
   uint32_t still_presence_millis_ = 0;
@@ -126,10 +135,10 @@ class LD6001Component : public PollingComponent, public uart::UARTDevice {
   uint16_t throttle_ = 1000;
   uint16_t timeout_ = 5;
 
-  std::deque<uint8_t> announce_entry;
-  std::deque<uint8_t> removed_targets;
-  std::unordered_map<uint8_t, uint32_t> entry_times;
-  std::unordered_map<uint8_t, uint32_t> last_seen_times;
+  std::deque<uint8_t> announce_entry_;
+  std::deque<uint8_t> removed_targets_;
+  std::unordered_map<uint8_t, uint32_t> entry_times_;
+  std::unordered_map<uint8_t, uint32_t> last_seen_times_;
 
   FrameIterator frame_iter_;
 
