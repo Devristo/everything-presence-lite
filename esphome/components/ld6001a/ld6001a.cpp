@@ -47,7 +47,7 @@ namespace esphome
       }));
     }
 
-    void LD6001AComponent::reset() {
+    void LD6001AComponent::soft_reset() {
       ESP_LOGD(TAG, "Resetting HLK-LD6001A...");
       this->command_queue_.enqueue(Command("AT+RESET\n", [this](const std::string &response) {
         ESP_LOGD(TAG, "HLK-LD6001A reset");

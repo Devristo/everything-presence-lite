@@ -32,6 +32,26 @@ struct Person {
   float vz;
 };
 
+struct ReadParamsResponse {
+  std::string softwareVersion;
+  float range_res;
+  float vel_res;
+  int time;
+  int prog;
+  int range;
+  int range_sensitivity;
+  int heart_beat_interval;
+  int protocol_mode;
+  int detection_height;
+  int x_nega;
+  int x_posi;
+  int y_nega;
+  int y_posi;
+  int moving_target_disappearance_time;
+  int static_target_disappearance_time;
+  int target_exit_time;
+};
+
 float read_float(const uint8_t *ptr) {
   float value;
   std::memcpy(&value, ptr, sizeof(float));

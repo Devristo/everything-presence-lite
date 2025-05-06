@@ -34,6 +34,7 @@ class LD6001AComponent : public Component, public uart::UARTDevice, public Frame
   void stop();
   void reset();
   void set_protocol_mode(ProtocolMode mode);
+  
   void config_factory_settings();
   void config_distance_sensitivity(uint8_t sensitivity);
   void config_heartbeat_interval(uint16_t interval_s);
