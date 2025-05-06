@@ -118,7 +118,7 @@ void test_it_should_accept_binary_type2(void) {
   FrameParser frame_iterator = FrameParser(handler);
   // 0 Bytes
   frame_iterator.push_data<8>({0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08});
-  frame_iterator.push_data<4>({0x60, 0, 0, 0}); // Length of the body
+  frame_iterator.push_uint32(96); // Length of the body
   TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
   frame_iterator.push_data<4>({0xA3, 0x01, 0x00, 0x00}); // Length of the body
   frame_iterator.push_data<4>({0x01, 0x00, 0x00, 0x00}); // TLV1

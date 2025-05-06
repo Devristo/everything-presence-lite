@@ -14,12 +14,12 @@ enum class MatchResult { INVALID, PARTIAL, COMPLETE };
 
 union FloatBytes {
   float f;
-  uint8_t bytes[4];
+  std::array<uint8_t, 4> bytes;
 };
 
 union Uint32Bytes {
   uint32_t u;
-  uint8_t bytes[4];
+  std::array<uint8_t, 4> bytes;
 };
 
 struct Person {
@@ -50,7 +50,7 @@ class FrameHandler {
  public:
   virtual void on_ack_response() {};
   virtual void on_simple_radar_response(const uint8_t people_counted) {};
-  virtual void on_detailed_radar_response(const std::vector<Person> people_counted) {};
+  virtual void on_detailed_radar_response(const std::vector<Person> people) {};
   virtual void on_invalid_frame() {};
   virtual ~FrameHandler() = default;
 };
@@ -74,9 +74,12 @@ class FrameParser {
 
   void push_float(float value) {
     FloatBytes fb = {value};
-    for (const auto &byte : fb.bytes) {
-      push_data(byte);
-    }
+    push_data(fb.bytes);
+  }
+
+  void push_uint32(uint32_t value) {
+    Uint32Bytes u32 = {value};
+    push_data(u32.bytes);
   }
 
   void try_parse_frame_() {
