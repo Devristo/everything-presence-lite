@@ -183,15 +183,15 @@ class FrameParser {
 
   MatchResult match_at_ok_() {
     auto buffer_size = buffer_.size();
-    std::string token = "AT+OK\r\n";
+    std::string token = "AT+OK\n";
 
-    if (buffer_size < 7) {
+    if (buffer_size < 6) {
       return std::equal(buffer_.begin(), buffer_.begin() + buffer_size, token.substr(0, buffer_size).c_str())
                  ? MatchResult::PARTIAL
                  : MatchResult::INVALID;
     }
 
-    return std::equal(buffer_.begin(), buffer_.begin() + 7, "AT+OK\r\n") ? MatchResult::COMPLETE : MatchResult::INVALID;
+    return std::equal(buffer_.begin(), buffer_.begin() + 6, "AT+OK\n") ? MatchResult::COMPLETE : MatchResult::INVALID;
   }
 
   MatchResult match_binary_type1_() {

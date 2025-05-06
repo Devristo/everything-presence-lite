@@ -36,7 +36,6 @@ void test_it_should_accept_at_ok(void) {
   frame_iterator.push_data('+');
   frame_iterator.push_data('O');
   frame_iterator.push_data('K');
-  frame_iterator.push_data('\r');
   frame_iterator.push_data('\n');
 
   TEST_ASSERT_EQUAL(ParseState::COMPLETE, frame_iterator.state_);
@@ -69,7 +68,6 @@ void test_it_should_skip_unknown_bytes(void) {
   frame_iterator.push_data('+');
   frame_iterator.push_data('O');
   frame_iterator.push_data('K');
-  frame_iterator.push_data('\r');
   frame_iterator.push_data('\n');
 
   TEST_ASSERT_EQUAL(ParseState::COMPLETE, frame_iterator.state_);
