@@ -1,12 +1,16 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <string>
 #include <vector>
 #include <stdint.h>
 #include <cstddef>
 #include <cstring>
 
 namespace esphome::ld6001a {
+
+enum class MatchResult { INVALID, PARTIAL, COMPLETE };
 
 union FloatBytes {
   float f;
@@ -77,11 +81,9 @@ class FrameParser {
 
   void try_parse_frame_() {
     switch (state_) {
+      case ParseState::READING_HEADER:
       case ParseState::IDLE:
         handle_idle_state();
-        break;
-      case ParseState::READING_HEADER:
-        handle_reading_header_state();
         break;
       case ParseState::READING_BODY:
         handle_reading_body_state();
@@ -105,17 +107,38 @@ class FrameParser {
   FrameHandler &frame_handler_;         // Reference to the frame handler
 
   void handle_idle_state() {
-    if (match_at_ok_()) {
-      state_ = ParseState::COMPLETE;
-    } else if (match_binary_type1_()) {
-      state_ = ParseState::READING_BODY;
-      auto frame_type = buffer_[2];
-      body_len_ = buffer_[2];  // Body length is the 3rd byte in type 1
-    } else if (match_binary_type2_()) {
-      state_ = ParseState::READING_BODY;
-      auto length = read_uint32(&buffer_[8]);
-      body_len_ = length + 1;  // Body length is the 9th byte in type 2
-    }
+    bool invalid = false;
+    bool partial = false;
+    bool complete = false;
+
+    do {
+      MatchResult ok_result = match_at_ok_();
+      MatchResult simple_result = match_binary_type1_();
+      MatchResult detailed_result = match_binary_type2_();
+
+      invalid = ok_result == MatchResult::INVALID && simple_result == MatchResult::INVALID &&
+                detailed_result == MatchResult::INVALID;
+
+      partial = ok_result == MatchResult::PARTIAL || simple_result == MatchResult::PARTIAL ||
+                detailed_result == MatchResult::PARTIAL;
+
+      if (ok_result == MatchResult::COMPLETE) {
+        state_ = ParseState::COMPLETE;
+      } else if (simple_result == MatchResult::COMPLETE) {
+        state_ = ParseState::READING_BODY;
+        auto frame_type = buffer_[2];
+        body_len_ = buffer_[2];  // Body length is the 3rd byte in type 1
+      } else if (detailed_result == MatchResult::COMPLETE) {
+        state_ = ParseState::READING_BODY;
+        auto length = read_uint32(&buffer_[8]);
+        body_len_ = length + 1;  // Body length is the 9th byte in type 2
+      } else if (partial) {
+        this->state_ = ParseState::READING_HEADER;
+      } else if (invalid) {
+        this->state_ = ParseState::INVALID;
+        drain_one_byte();
+      }
+    } while ((buffer_.size() > 0) && invalid);
   }
 
   void handle_reading_header_state() {
@@ -148,26 +171,42 @@ class FrameParser {
 
   void handle_invalid_state() {
     // Handle invalid frame (log error, resync, etc.)
+    // drain_one_byte();  // Remove the invalid byte from the buffer
     state_ = ParseState::IDLE;  // Reset state after invalid frame
+    handle_idle_state();        // Try to find the next valid frame
   }
 
-  bool match_at_ok_() {
-    if (buffer_.size() < 5)
-      return false;  // AT+OK\r\n needs at least 5 bytes
-    return std::equal(buffer_.begin(), buffer_.begin() + 5, "AT+OK\r\n");
+  MatchResult match_at_ok_() {
+    auto buffer_size = buffer_.size();
+    std::string token = "AT+OK\r\n";
+
+    if (buffer_size < 5) {
+      return std::equal(buffer_.begin(), buffer_.begin() + buffer_size, token.substr(0, buffer_size).c_str())
+                 ? MatchResult::PARTIAL
+                 : MatchResult::INVALID;
+    }
+
+    return std::equal(buffer_.begin(), buffer_.begin() + 5, "AT+OK\r\n") ? MatchResult::COMPLETE : MatchResult::INVALID;
   }
 
-  bool match_binary_type1_() {
-    if (buffer_.size() < 4)
-      return false;  // Minimal 3-byte header for 0x55 0xAA
-    return buffer_[0] == 0x55 && buffer_[1] == 0xAA;
+  MatchResult match_binary_type1_() {
+    auto buffer_size = buffer_.size();
+    auto match_size = std::min<size_t>(2, buffer_size);
+    static const std::array<uint8_t, 2> header = {0x55, 0xAA};
+
+    return std::equal(header.begin(), header.begin() + match_size, buffer_.begin())
+               ? (buffer_size < 4 ? MatchResult::PARTIAL : MatchResult::COMPLETE)
+               : MatchResult::INVALID;
   }
 
-  bool match_binary_type2_() {
-    if (buffer_.size() < 9)
-      return false;  // Minimal 8-byte header for 0x01 0x02 ...
+  MatchResult match_binary_type2_() {
+    auto buffer_size = buffer_.size();
+    auto match_size = std::min<size_t>(8, buffer_size);
     static const std::array<uint8_t, 8> header = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-    return std::equal(header.begin(), header.end(), buffer_.begin());
+
+    return std::equal(header.begin(), header.begin() + match_size, buffer_.begin())
+               ? (buffer_size < 9 ? MatchResult::PARTIAL : MatchResult::COMPLETE)
+               : MatchResult::INVALID;
   }
 
   void drain_one_byte() {
@@ -201,13 +240,13 @@ class FrameParser {
 
   void process_frame() {
     // Process the frame (e.g., call specific handlers)
-    if (match_at_ok_()) {
+    if (match_at_ok_() == MatchResult::COMPLETE) {
       // Handle AT+OK frame response
       process_at_ok_response();
-    } else if (match_binary_type1_()) {
+    } else if (match_binary_type1_() == MatchResult::COMPLETE) {
       // Handle type 1 frame (0x55 0xAA)
       process_binary_type1_response();
-    } else if (match_binary_type2_()) {
+    } else if (match_binary_type2_() == MatchResult::COMPLETE) {
       // Handle type 2 frame (0x01 0x02 0x03 0x04 ...)
       process_binary_type2_response();
     }
