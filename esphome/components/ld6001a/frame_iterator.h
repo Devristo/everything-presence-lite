@@ -124,6 +124,8 @@ class FrameParser {
 
       if (ok_result == MatchResult::COMPLETE) {
         state_ = ParseState::COMPLETE;
+        process_at_ok_response();
+        return;
       } else if (simple_result == MatchResult::COMPLETE) {
         state_ = ParseState::READING_BODY;
         auto frame_type = buffer_[2];
@@ -180,13 +182,13 @@ class FrameParser {
     auto buffer_size = buffer_.size();
     std::string token = "AT+OK\r\n";
 
-    if (buffer_size < 5) {
+    if (buffer_size < 7) {
       return std::equal(buffer_.begin(), buffer_.begin() + buffer_size, token.substr(0, buffer_size).c_str())
                  ? MatchResult::PARTIAL
                  : MatchResult::INVALID;
     }
 
-    return std::equal(buffer_.begin(), buffer_.begin() + 5, "AT+OK\r\n") ? MatchResult::COMPLETE : MatchResult::INVALID;
+    return std::equal(buffer_.begin(), buffer_.begin() + 7, "AT+OK\r\n") ? MatchResult::COMPLETE : MatchResult::INVALID;
   }
 
   MatchResult match_binary_type1_() {
