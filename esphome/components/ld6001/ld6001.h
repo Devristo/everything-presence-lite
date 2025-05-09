@@ -43,17 +43,7 @@ namespace ld6001 {
 // Constants
 static const uint8_t DEFAULT_PRESENCE_TIMEOUT = 5;  // Timeout to reset presense status 5 sec.
 static const uint16_t MAX_LINE_LENGTH = 1024;          // Max characters for serial buffer
-static const uint8_t MAX_TARGETS = 10;               // Max 3 Targets in LD6001
 static const uint8_t MAX_ZONES = 4;                 // Max 3 Zones in LD6001
-
-struct Target {
-  uint8_t id;
-  uint8_t pitch_angle;
-  uint8_t horizontal_angle;
-  uint8_t distance;
-  int16_t x;
-  int16_t y;
-};
 
 struct TargetInfo {
   uint8_t targets;
@@ -82,7 +72,7 @@ struct ZoneOfNumbers {
 };
 #endif
 
-class LD6001Component : public PollingComponent, public uart::UARTDevice {
+class LD6001Component : public PollingComponent, public uart::UARTDevice, public FrameHandler {
 #ifdef USE_SENSOR
   SUB_SENSOR(target_count)
 #endif
@@ -100,6 +90,9 @@ class LD6001Component : public PollingComponent, public uart::UARTDevice {
   void update() override;
 
   void set_throttle(uint16_t value) { this->throttle_ = value; };
+
+  void on_radar_response(const RadarResponse &response) override;
+  void on_status_response(const StatusResponse &response) override;
 
 #ifdef USE_SENSOR
   void set_move_x_sensor(uint8_t target, sensor::Sensor *s);
@@ -126,8 +119,6 @@ protected:
 
   TargetInfo target_info_ = {};
   Zone zone_config_[MAX_ZONES];
-  uint8_t buffer_pos_ = 0;  // where to resume processing/populating buffer
-  uint8_t buffer_data_[MAX_LINE_LENGTH] = {};
   uint32_t last_periodic_millis_ = 0;
   uint32_t presence_millis_ = 0;
   uint32_t still_presence_millis_ = 0;

@@ -9,7 +9,7 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
-#include "frame_iterator.h"
+#include "frame_parser.h"
 #include "command_queue.h"
 
 namespace esphome {
