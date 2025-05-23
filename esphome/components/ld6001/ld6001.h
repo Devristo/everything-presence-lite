@@ -9,7 +9,7 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
-#include "frame_iterator.h"
+#include "frame_parser.h"
 
 #ifdef USE_SENSOR
 #include "esphome/components/sensor/sensor.h"
@@ -131,7 +131,7 @@ protected:
   std::unordered_map<uint8_t, uint32_t> entry_times_;
   std::unordered_map<uint8_t, uint32_t> last_seen_times_;
 
-  FrameIterator frame_iter_;
+  FrameParser frame_iter_;
 
   uint8_t zone_type_ = 0;
   std::string version_{};

@@ -11,20 +11,42 @@
 #include "esphome/core/preferences.h"
 #include "frame_parser.h"
 #include "command_queue.h"
+#include "target_tracker.h"
+
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
+
+#ifdef USE_NUMBER
+#include "esphome/components/number/number.h"
+#endif
+
+#define MAX_TARGETS 10
 
 namespace esphome {
 namespace ld6001a {
 
-enum ProtocolMode {
-  PROTOCOL_MODE_SIMPLE = 0,
-  PROTOCOL_MODE_OUTPUT_STRING = 1,
-  PROTOCOL_MODE_DEBUG = 2,
-  PROTOCOL_MODE_DETAILED = 3,
-};
+class LD6001AComponent : public Component, public uart::UARTDevice, public FrameHandler, protected TargetEventHandler {
+#ifdef USE_SENSOR
+  SUB_SENSOR(target_count)
+#endif
 
+#ifdef USE_NUMBER
+  SUB_NUMBER(heartbeat)
+  SUB_NUMBER(installation_height)
+  SUB_NUMBER(long_distance_sensitivity)
+  SUB_NUMBER(ground_radius)
+  SUB_NUMBER(target_exit_boundary_time)
+  SUB_NUMBER(static_target_disappearance_time)
+  SUB_NUMBER(moving_target_disappearance_time)
 
-class LD6001AComponent : public Component, public uart::UARTDevice, public FrameHandler {
- public:
+  SUB_NUMBER(x_min)
+  SUB_NUMBER(x_max)
+  SUB_NUMBER(y_min)
+  SUB_NUMBER(y_max)
+#endif
+
+public:
   LD6001AComponent();
   void setup() override;
   void dump_config() override;
@@ -33,23 +55,49 @@ class LD6001AComponent : public Component, public uart::UARTDevice, public Frame
   void start();
   void stop();
   void reset();
+  void soft_reset();
+
+  const std::vector<Person> &get_targets() const { return this->detailed_people_response_; }
+
+  Trigger<uint32_t> *get_target_enter_trigger() { return &this->target_enter_trigger_; }
+  Trigger<uint32_t, uint32_t> *get_target_left_trigger() { return &this->target_left_trigger_; }
+  Trigger<const std::vector<Person>&> *get_update_trigger() { return &this->update_trigger_; }
+
   void set_protocol_mode(ProtocolMode mode);
+  void set_throttle(uint16_t value) { this->throttle_ = value; };
+  void set_reset_pin(InternalGPIOPin *reset_pin) { this->reset_pin_ = reset_pin; }
   
   void config_factory_settings();
   void config_distance_sensitivity(uint8_t sensitivity);
   void config_heartbeat_interval(uint16_t interval_s);
   void config_ground_radius(uint16_t radius_cm);
   void config_vertical_distance(int distance_cm);
-  void config_x_range(int x1, int x2);
-  void config_y_range(int y1, int y2);
-  void config_moving_target_disappearance_time(uint16_t time_ms);
-  void config_static_target_disappearance_time(uint16_t time_ms);
-  void config_exit_boundary_time(uint16_t time_ms);
+
+  void config_x_min(int x_min);
+  void config_x_max(int x_max);
+  void config_y_min(int y_min);
+  void config_y_max(int y_max);
+
+  void config_moving_target_disappearance_time(uint32_t time_ms);
+  void config_static_target_disappearance_time(uint32_t time_ms);
+  void config_exit_boundary_time(uint32_t time_ms);
 
   void on_ack_response() override;
+  void on_read_params_response(const ReadParamsResponse response) override;
   void on_simple_radar_response(const uint8_t people_counted);
   void on_detailed_radar_response(const std::vector<Person> people);
   void on_invalid_frame() override;
+
+  virtual void on_target_enter(uint32_t target_id) override;
+  virtual void on_target_left(uint32_t target_id, uint32_t dwell_time) override;
+
+#ifdef USE_SENSOR
+  void set_move_x_sensor(uint8_t target, sensor::Sensor *s);
+  void set_move_y_sensor(uint8_t target, sensor::Sensor *s);
+  void set_move_z_sensor(uint8_t target, sensor::Sensor *s);
+  void set_move_distance_sensor(uint8_t target, sensor::Sensor *s);
+#endif
+
   
 protected:
   FrameParser frame_parser_{*this};
@@ -57,6 +105,24 @@ protected:
 
   std::vector<Person> detailed_people_response_{};
   uint8_t people_counted_ = 0;
+  uint16_t throttle_ = 1000;
+  uint16_t last_periodic_millis_ = 0;
+
+  void update_sensors_();
+
+  TargetTracker<Person> target_tracker_{*this};
+  Trigger<uint32_t> target_enter_trigger_;
+  Trigger<uint32_t, uint32_t> target_left_trigger_;
+  Trigger<const std::vector<Person>&> update_trigger_;
+
+  InternalGPIOPin *reset_pin_ = nullptr;
+
+#ifdef USE_SENSOR
+  std::vector<sensor::Sensor *> move_x_sensors_ = std::vector<sensor::Sensor *>(MAX_TARGETS);
+  std::vector<sensor::Sensor *> move_y_sensors_ = std::vector<sensor::Sensor *>(MAX_TARGETS);
+  std::vector<sensor::Sensor *> move_z_sensors_ = std::vector<sensor::Sensor *>(MAX_TARGETS);
+  std::vector<sensor::Sensor *> move_distance_sensors_ = std::vector<sensor::Sensor *>(MAX_TARGETS);
+#endif
 };
 
 }  // namespace ld6001a

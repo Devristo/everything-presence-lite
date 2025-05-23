@@ -12,6 +12,10 @@ esp32:
   framework:
     type: arduino
 
+# psram:
+#   mode: octal
+#   speed: 80MHz
+
 # Enable logging
 logger:
   level: WARN
@@ -26,8 +30,8 @@ ota:
 captive_portal:
 
 wifi:
-  ssid: Ristorante
-  password: Pizzamargherita276
+  ssid: Vida
+  password: '12345678'
 
   ap:
       ssid: "Hoolty Booth Sensor"
@@ -55,6 +59,10 @@ external_components:
       path: ./esphome/components
     refresh: '0s'
 
+font:
+  - file: "fonts/AdwaitaMono-Regular.ttf"
+    id: font_small
+    size: 16
 #esp32_camera:
 ##  resolution: "FHD"
 #  external_clock:
@@ -85,7 +93,7 @@ uart:
 mqtt:
   id: mqtt_client
   enable_on_boot: true
-  broker: "192.168.178.2"
+  broker: "rtm.buristo.nl"
   username: "homeassistant"
   password: "FUxBFa62fkbCTopkyCJTT@!ZAEK8D3u3"
   log_topic: null
@@ -96,6 +104,12 @@ ld6001:
   throttle: 1000ms
   uart_id: uart_2
   update_interval: 500ms
+
+i2c:
+  sda: GPIO38
+  scl: GPIO39
+  scan: true
+  id: bus_a
 
 sensor:
   - platform: ld6001
@@ -136,6 +150,41 @@ sensor:
     zone_4:
       target_count:
         name: Zone-4 Target Count
+  - platform: mpu6886
+    address: 0x68
+    update_interval: 1s
+    accel_x:
+      name: "MPU6886 Accel X"
+      id: accel_x
+    accel_y:
+      name: "MPU6886 Accel Y"
+      id: accel_y
+    accel_z:
+      name: "MPU6886 Accel z"
+      id: accel_z
+    gyro_x:
+      name: "MPU6886 Gyro X"
+    gyro_y:
+      name: "MPU6886 Gyro Y"
+    gyro_z:
+      name: "MPU6886 Gyro z"
+    temperature:
+      name: "MPU6886 Temperature"
+  - platform: template
+    name: "Wall Pitch"
+    id: wall_pitch
+    update_interval: 1s
+    unit_of_measurement: "°"
+    lambda: |-
+      return atan2(id(accel_z).state, sqrt(pow(id(accel_x).state, 2) + pow(id(accel_y).state, 2))) * 180.0 / PI;
+
+  - platform: template
+    name: "Wall Roll"
+    id: wall_roll
+    update_interval: 1s
+    unit_of_measurement: "°"
+    lambda: |-
+      return atan2(id(accel_y).state, id(accel_x).state) * 180.0 / PI;
 
 text_sensor:
   - platform: ld6001
@@ -182,3 +231,67 @@ number:
         name: Zone-4 X2
       y2:
         name: Zone-4 Y2
+  
+spi:
+  clk_pin: GPIO17
+  mosi_pin: GPIO21
+
+output:
+  - id: backlight_output
+    platform: ledc
+    frequency: 500Hz
+    pin: 16
+    min_power: 0.3
+    max_power: 1
+    zero_means_zero: true
+
+light:
+  - output: backlight_output
+    id: backlight
+    name: Backlight
+    platform: monochromatic
+    icon: mdi:brightness-7
+    restore_mode: ALWAYS_ON
+
+color:
+  - id: my_red
+    red: 100%
+    green: 3%
+    blue: 5%
+  - id: my_green
+    green: 100%
+    blue: 3%
+    red: 5%
+  - id: white
+    green: 100%
+    blue: 100%
+    red: 100%
+
+display:
+  - id: lcd_display
+    platform: ili9xxx
+    dimensions:
+      height: 128
+      width: 128
+      offset_height: 1
+      offset_width: 2
+    model: st7789v
+    data_rate: 80MHz
+    cs_pin: GPIO15
+    dc_pin: GPIO33
+    reset_pin: GPIO34
+    invert_colors: true
+    transform:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+    lambda: |-
+      it.rectangle(0,  0, it.get_width(), it.get_height(), id(my_red));
+      it.printf(10, 10, id(font_small), "Wall Tilt");
+      it.printf(10, 40, id(font_small), "Pitch: %.1f°", id(wall_pitch).state);
+      it.printf(10, 60, id(font_small), "Roll: %.1f°", id(wall_roll).state);
+
+interval:
+  - interval: 1s
+    then:
+      - component.update: lcd_display

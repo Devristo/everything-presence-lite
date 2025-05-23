@@ -44,7 +44,7 @@ static const std::array<uint8_t, 14> CMD_RADAR_REQUEST_NORMAL = {0x44, 0x62, 0x0
 static const std::array<uint8_t, 14> CMD_RADAR_REQUEST_PRECISE = {0x44, 0x62, 0x08, 0x00, 0x20, 0x00, 0x00,
                                                                   0x00, 0x00, 0x00, 0x00, 0x00, 0xCE, 0x4B};
 
-LD6001Component::LD6001Component() : PollingComponent(500), frame_iter_(FrameIterator(*this)) {}
+LD6001Component::LD6001Component() : PollingComponent(500), frame_iter_(FrameParser(*this)) {}
 
 void LD6001Component::setup() {
   ESP_LOGCONFIG(TAG, "Setting up HLK-LD6001...");
@@ -82,29 +82,16 @@ void LD6001Component::dump_config() {
 
 void LD6001Component::loop() {
   auto start = millis();
-  while (frame_iter_.next()) {
-    const auto &frame = frame_iter_.value();
-    uint8_t msg_type = frame[1];
-    switch (msg_type) {
-      case 0x11:
-        this->read_version_frame_(frame);
-        break;
-      case 0x62:
-        this->read_radar_frame_(frame.data());
-        break;
-      default:
-        ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg_type);
-        break;
-    }
-  }
 
-  auto delta = millis() - start;
-  if (delta > 5) {
-    ESP_LOGW(TAG, "Frame processing took %d ms", delta);
+  while (this->available()) {
+    uint8_t byte;
+    if (this->read_byte(&byte)) {
+      this->frame_iter_.push_data(byte);
+    }
   }
 }
 
-void on_status_response(const StatusResponse &response) {
+void LD6001Component::on_status_response(const StatusResponse &response) {
   std::string version =
       str_sprintf("HW v%d.%02d / SW v%d.%02d", response.hardware_version_major, response.hardware_version_minor,
                   response.software_version_major, response.software_version_minor);
@@ -220,7 +207,8 @@ void LD6001Component::update_sensors_() {
   }
 #endif
 }
-void on_radar_response(const RadarResponse &response) {
+
+void LD6001Component::on_radar_response(const RadarResponse &response) {
   // uint8_t targets = buffer[5];
 
   std::unordered_set<uint8_t> missing_targets;
@@ -229,21 +217,21 @@ void on_radar_response(const RadarResponse &response) {
   }
 
   this->target_info_.targets = response.targets;
-  for (int target_index = 0; target < MAX_TARGETS; target++) {
-    auto target = &response.people[target_index];
+  for (int target_index = 0; target_index < MAX_TARGETS; target_index++) {
+    auto target = response.people[target_index];
     if (target_index < response.targets) {
       this->update_last_seen_(target.id);
       missing_targets.erase(target.id);
     }
 
-    this->target_info_.target_data[target] = target;
+    this->target_info_.target_data[target_index] = target;
   }
 
   for (size_t index = 0; index < MAX_ZONES; ++index) {
     auto &zone = this->zone_config_[index];
     zone.target_count = 0;
 
-    for (int target = 0; target < targets; target++) {
+    for (int target = 0; target < response.targets; target++) {
       auto target_id = this->target_info_.target_data[target].id;
       auto coord_x = this->target_info_.target_data[target].x;
       auto coord_y = this->target_info_.target_data[target].y;

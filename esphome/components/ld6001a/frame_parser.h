@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <cstddef>
 #include <cstring>
+#include "esphome/components/json/json_util.h"
 
 namespace esphome::ld6001a {
 
@@ -47,28 +48,19 @@ struct ReadParamsResponse {
   int x_posi;
   int y_nega;
   int y_posi;
-  int moving_target_disappearance_time;
-  int static_target_disappearance_time;
-  int target_exit_time;
+  float moving_target_disappearance_time;
+  float static_target_disappearance_time;
+  float target_exit_time;
 };
 
-float read_float(const uint8_t *ptr) {
-  float value;
-  std::memcpy(&value, ptr, sizeof(float));
-  return value;
-}
-
-uint32_t read_uint32(const uint8_t *ptr) {
-  uint32_t value;
-  std::memcpy(&value, ptr, sizeof(uint32_t));
-  return value;
-}
 
 enum class ParseState { IDLE, READING_HEADER, READING_BODY, VALIDATING, COMPLETE, INVALID };
 
 class FrameHandler {
  public:
   virtual void on_ack_response() {};
+  virtual void on_save_param_failed() {};
+  virtual void on_read_params_response(const ReadParamsResponse response){};
   virtual void on_simple_radar_response(const uint8_t people_counted) {};
   virtual void on_detailed_radar_response(const std::vector<Person> people) {};
   virtual void on_invalid_frame() {};
@@ -82,6 +74,9 @@ class FrameParser {
 
   // Call this method to push data into the parser
   void push_data(const uint8_t byte) {
+
+    // ESP_LOGD("ld6001a", "push byte %X to %s", byte, format_hex(buffer_).c_str());
+
     buffer_.push_back(byte);  // Add byte to the buffer
     try_parse_frame_();       // Try to parse frame after every new byte
   }
@@ -129,6 +124,27 @@ class FrameParser {
   std::size_t body_len_ = 0;            // Length of the body for frames that include it
   FrameHandler &frame_handler_;         // Reference to the frame handler
 
+  float read_float(const uint8_t *ptr) {
+    float value;
+    std::memcpy(&value, ptr, sizeof(float));
+    return value;
+  }
+
+  uint32_t read_uint32(const uint8_t *ptr) {
+    uint32_t value;
+    std::memcpy(&value, ptr, sizeof(uint32_t));
+    return value;
+  }
+
+  void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+    if (from.empty()) return;
+    size_t startPos = 0;
+    while ((startPos = str.find(from, startPos)) != std::string::npos) {
+        str.replace(startPos, from.length(), to);
+        startPos += to.length(); // Move past the replacement
+    }
+  }
+
   void handle_idle_state() {
     bool invalid = false;
     bool partial = false;
@@ -138,12 +154,17 @@ class FrameParser {
       MatchResult ok_result = match_at_ok_();
       MatchResult simple_result = match_binary_type1_();
       MatchResult detailed_result = match_binary_type2_();
+      MatchResult read_response = match_read_response_();
+      MatchResult save_param_fail_respone_ = match_save_para_fail_();
 
       invalid = ok_result == MatchResult::INVALID && simple_result == MatchResult::INVALID &&
-                detailed_result == MatchResult::INVALID;
+                detailed_result == MatchResult::INVALID && read_response == MatchResult::INVALID
+                && save_param_fail_respone_ == MatchResult::INVALID;
 
       partial = ok_result == MatchResult::PARTIAL || simple_result == MatchResult::PARTIAL ||
-                detailed_result == MatchResult::PARTIAL;
+                detailed_result == MatchResult::PARTIAL
+                || read_response == MatchResult::PARTIAL
+                || save_param_fail_respone_ == MatchResult::PARTIAL;
 
       if (ok_result == MatchResult::COMPLETE) {
         state_ = ParseState::COMPLETE;
@@ -160,10 +181,95 @@ class FrameParser {
       } else if (partial) {
         this->state_ = ParseState::READING_HEADER;
       } else if (invalid) {
-        this->state_ = ParseState::INVALID;
         drain_one_byte();
       }
     } while ((buffer_.size() > 0) && invalid);
+  }
+
+  MatchResult match_save_para_fail_() {
+    std::string marker = "Save Para Fail\r\n"; // 16 chars
+    auto buffer_size = buffer_.size();
+    auto match_size = std::min<size_t>(16, buffer_size);
+
+    auto match = std::equal(marker.begin(), marker.begin() + match_size, buffer_.begin());
+
+    if (!match) {
+      return MatchResult::INVALID;
+    } else if (buffer_size < 16) {
+      return MatchResult::PARTIAL;
+    } else {
+      buffer_.erase(buffer_.begin(), buffer_.begin() + 16);  // Remove the processed part from the buffer
+      this->frame_handler_.on_save_param_failed();
+
+      return MatchResult::COMPLETE;
+    }
+  }
+
+  MatchResult match_read_response_() {
+    if (buffer_[0] != '{') {
+      return MatchResult::INVALID;
+    }
+
+    std::string target_exit_marker = "Target exit \xA3\xBA";
+    auto target_exit_pos = std::search(buffer_.begin(), buffer_.end(), target_exit_marker.begin(), target_exit_marker.end());
+
+    if (target_exit_pos == buffer_.end()) {
+      return MatchResult::PARTIAL;
+    }
+
+    std::string end_marker = "s,";
+    auto end_pos = std::search(target_exit_pos, buffer_.end(), end_marker.begin(), end_marker.end());
+
+    if (end_pos == buffer_.end()) {
+      return MatchResult::PARTIAL;
+    }
+
+    std::string response(buffer_.begin(), end_pos);
+
+    ESP_LOGD("ld6001a", "Found READ response: %s", response.c_str());
+
+    buffer_.erase(buffer_.begin(), end_pos + 1);  // Remove the processed part from the buffer
+
+    replaceAll(response, "\x09\x0a", "\r\n");
+    replaceAll(response, "\xa3\xba", " ");
+    replaceAll(response, "Moving target", "\"Moving target\":");
+    replaceAll(response, "Static target", "\"Static target\":");
+    replaceAll(response, "Target exit", "\"Target exit\":");
+    replaceAll(response, "s,", ",");
+
+    response += "}";
+
+    ESP_LOGW("ld6001a", "Fixed READ response: %s", response.c_str());
+
+    json::parse_json(response, [this](ArduinoJson::JsonObject obj) -> bool {
+      ReadParamsResponse read_params_response;
+      read_params_response.softwareVersion = obj["SoftwareVersion"].as<std::string>();
+      read_params_response.range_res = obj["RangeRes"].as<float>();
+      read_params_response.vel_res = obj["VelRes"].as<float>();
+      read_params_response.time = obj["Time"].as<int>();
+      read_params_response.prog = obj["Prog"].as<int>();
+      read_params_response.range = obj["Range"].as<int>();
+      read_params_response.range_sensitivity = obj["Sen"].as<int>();
+      read_params_response.heart_beat_interval = obj["Heart_Time"].as<int>();
+      read_params_response.protocol_mode = obj["Debug"].as<int>();
+      read_params_response.detection_height = obj["detectionHeight"].as<int>();
+      read_params_response.x_nega = obj["XboundaryN"].as<int>();
+      read_params_response.x_posi = obj["XboundaryP"].as<int>();
+      read_params_response.y_nega = obj["YboundaryN"].as<int>();
+      read_params_response.y_posi = obj["YboundaryP"].as<int>();
+      read_params_response.moving_target_disappearance_time = obj["Moving target"].as<float>();
+      read_params_response.static_target_disappearance_time = obj["Static target"].as<float>();
+      read_params_response.target_exit_time = obj["Target exit"].as<float>();
+
+      this->frame_handler_.on_ack_response();
+      this->frame_handler_.on_read_params_response(read_params_response);
+
+      return true;
+      // ESP_LOGW("ld6001a", "Parsed READ response: %s", format_hex_pretty(buffer_).c_str());
+    });
+
+
+    return MatchResult::COMPLETE;
   }
 
   void handle_reading_header_state() {
@@ -195,6 +301,7 @@ class FrameParser {
   }
 
   void handle_invalid_state() {
+    ESP_LOGD("ld6001a", "Handle invalid state %s", format_hex_pretty(buffer_).c_str());
     // Handle invalid frame (log error, resync, etc.)
     // drain_one_byte();  // Remove the invalid byte from the buffer
     state_ = ParseState::IDLE;  // Reset state after invalid frame
@@ -203,15 +310,49 @@ class FrameParser {
 
   MatchResult match_at_ok_() {
     auto buffer_size = buffer_.size();
-    std::string token = "AT+OK\n";
+    const std::string prefix = "AT+";
+    const std::string suffix = "\r\n";
 
-    if (buffer_size < 6) {
-      return std::equal(buffer_.begin(), buffer_.begin() + buffer_size, token.substr(0, buffer_size).c_str())
+    if (buffer_size < prefix.size()) {
+      // Not enough for prefix
+      return std::equal(buffer_.begin(), buffer_.end(), prefix.begin())
                  ? MatchResult::PARTIAL
                  : MatchResult::INVALID;
     }
 
-    return std::equal(buffer_.begin(), buffer_.begin() + 6, "AT+OK\n") ? MatchResult::COMPLETE : MatchResult::INVALID;
+    // Check prefix
+    if (!std::equal(buffer_.begin(), buffer_.begin() + prefix.size(), prefix.begin()))
+      return MatchResult::INVALID;
+
+    size_t pos = prefix.size();
+
+    // Optional '=' and value (anything but '\r')
+    if (buffer_size > pos) {
+      ++pos;
+      while (pos < buffer_size && buffer_[pos] != '\r') {
+        ++pos;
+      }
+    }
+
+    // Now expect "\r\n"
+    if (buffer_size < pos + suffix.size()) {
+      // Not enough for suffix, check partial
+      for (size_t i = 0; i < buffer_size - pos; ++i) {
+        if (buffer_[pos + i] != static_cast<uint8_t>(suffix[i]))
+          return MatchResult::INVALID;
+      }
+      return MatchResult::PARTIAL;
+    }
+
+    // Check suffix
+    if (buffer_[pos] == '\r' && buffer_[pos + 1] == '\n') {
+
+      buffer_.erase(buffer_.begin(), buffer_.begin() + pos+1 + 1);
+
+      return MatchResult::COMPLETE;
+    }
+
+    return MatchResult::INVALID;
   }
 
   MatchResult match_binary_type1_() {
@@ -230,11 +371,13 @@ class FrameParser {
     static const std::array<uint8_t, 8> header = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
     return std::equal(header.begin(), header.begin() + match_size, buffer_.begin())
-               ? (buffer_size < 9 ? MatchResult::PARTIAL : MatchResult::COMPLETE)
+               ? (buffer_size < 8 + 4 ? MatchResult::PARTIAL : MatchResult::COMPLETE)
                : MatchResult::INVALID;
   }
 
   void drain_one_byte() {
+    ESP_LOGE("ld6001a", "drain single byte from: %s", format_hex_pretty(buffer_).c_str());
+
     if (!buffer_.empty()) {
       buffer_.erase(buffer_.begin());
     }
@@ -293,17 +436,19 @@ class FrameParser {
     for (size_t i = 0; i < people_count; ++i) {
       auto offset = i * 32 + 32;  // Start reading from the 33rd byte
       Person person = {
-          .id{read_uint32(&buffer_[offset + 4])},
-          .x{read_float(&buffer_[offset + 8])},
-          .y{read_float(&buffer_[offset + 12])},
-          .z{read_float(&buffer_[offset + 16])},
-          .vx{read_float(&buffer_[offset + 20])},
-          .vy{read_float(&buffer_[offset + 24])},
-          .vz{read_float(&buffer_[offset + 28])},
+          .id = read_uint32(&buffer_[offset + 4]),
+          .x = read_float(&buffer_[offset + 8]),
+          .y = read_float(&buffer_[offset + 12]),
+          .z = read_float(&buffer_[offset + 16]),
+          .vx = read_float(&buffer_[offset + 20]),
+          .vy = read_float(&buffer_[offset + 24]),
+          .vz = read_float(&buffer_[offset + 28]),
       };
 
       people.push_back(person);
     }
+
+    buffer_.clear();
 
     this->frame_handler_.on_detailed_radar_response(people);  // Assuming 4th byte is people count
   }
