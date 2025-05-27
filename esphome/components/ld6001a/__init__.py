@@ -7,6 +7,8 @@ from esphome import automation, pins
 DEPENDENCIES = ["uart"]
 MULTI_CONF = True
 
+MAX_ZONES = 4
+
 ld6001a_ns = cg.esphome_ns.namespace("ld6001a")
 LD6001AComponent = ld6001a_ns.class_("LD6001AComponent", cg.Component, uart.UARTDevice)
 Person = ld6001a_ns.struct("Person")

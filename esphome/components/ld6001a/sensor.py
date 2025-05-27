@@ -10,7 +10,7 @@ from esphome.const import (
     UNIT_MILLIMETER,
 )
 
-from . import CONF_LD6001A_ID, LD6001AComponent
+from . import CONF_LD6001A_ID, LD6001AComponent, MAX_ZONES
 
 DEPENDENCIES = ["ld6001a"]
 
@@ -37,7 +37,6 @@ ICON_RELATION_ZERO_OR_ONE_TO_ZERO_OR_ONE = "mdi:relation-zero-or-one-to-zero-or-
 ICON_SPEEDOMETER_SLOW = "mdi:speedometer-slow"
 
 MAX_TARGETS = 10
-MAX_ZONES = 4
 
 UNIT_MILLIMETER_PER_SECOND = "mm/s"
 

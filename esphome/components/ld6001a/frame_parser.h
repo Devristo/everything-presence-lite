@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstring>
 #include "esphome/components/json/json_util.h"
+#include "esphome/core/log.h"
 
 namespace esphome::ld6001a {
 
@@ -52,7 +53,6 @@ struct ReadParamsResponse {
   float static_target_disappearance_time;
   float target_exit_time;
 };
-
 
 enum class ParseState { IDLE, READING_HEADER, READING_BODY, VALIDATING, COMPLETE, INVALID };
 
@@ -181,6 +181,7 @@ class FrameParser {
       } else if (partial) {
         this->state_ = ParseState::READING_HEADER;
       } else if (invalid) {
+        state_ = ParseState::INVALID;
         drain_one_byte();
       }
     } while ((buffer_.size() > 0) && invalid);
@@ -260,6 +261,8 @@ class FrameParser {
       read_params_response.moving_target_disappearance_time = obj["Moving target"].as<float>();
       read_params_response.static_target_disappearance_time = obj["Static target"].as<float>();
       read_params_response.target_exit_time = obj["Target exit"].as<float>();
+
+      state_ = ParseState::COMPLETE;
 
       this->frame_handler_.on_ack_response();
       this->frame_handler_.on_read_params_response(read_params_response);

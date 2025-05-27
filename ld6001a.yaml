@@ -173,43 +173,18 @@ sensor:
         name: Target-1 Z
       distance:
         name: Target-1 Distance
-
-    # target_count:
-    #   name: Presence Target Count
-    # target_1:
-    #   x:
-    #     name: Target-1 X
-    #   y:
-    #     name: Target-1 Y
-    #   pitch_angle:
-    #     name: Target-1 Pitch Angle
-    #   horizontal_angle:
-    #     name: Target-1 Horizontal Angle
-    #   distance:
-    #     name: Target-1 Distance
-    # target_2:
-    #   x:
-    #     name: Target-2 X
-    #   y:
-    #     name: Target-2 Y
-    #   pitch_angle:
-    #     name: Target-2 Pitch Angle
-    #   horizontal_angle:
-    #     name: Target-2 Horizontal Angle
-    #   distance:
-    #     name: Target-2 Distance
-    # zone_1:
-    #   target_count:
-    #     name: Zone-1 Target Count
-    # zone_2:
-    #   target_count:
-    #     name: Zone-2 Target Count
-    # zone_3:
-    #   target_count:
-    #     name: Zone-3 Target Count
-    # zone_4:
-    #   target_count:
-    #     name: Zone-4 Target Count
+    zone_1:
+      target_count:
+        name: "Zone-1 Target Count"
+    zone_2:
+      target_count:
+        name: "Zone-2 Target Count"
+    zone_3:
+      target_count:
+        name: "Zone-3 Target Count"
+    zone_4:
+      target_count:
+        name: "Zone-4 Target Count"
 
 # text_sensor:
 #   - platform: ld6001a
@@ -242,3 +217,55 @@ number:
       name: "Config: Y min"
     y_max:
       name: "Config: Y max"
+    zone_1:
+      x1:
+        name: "Config: Zone-1 X1"
+        # restore_value: true
+      y1:
+        name: "Config: Zone-1 Y1"
+        # restore_value: true
+      x2:
+        name: "Config: Zone-1 X2"
+        # restore_value: true
+      y2:
+        name: "Config: Zone-1 Y2"
+        # restore_value: true
+    zone_2:
+      x1:
+        name: "Config: Zone-2 X1"
+        # restore_value: true
+      y1:
+        name: "Config: Zone-2 Y1"
+        # restore_value: true
+      x2:
+        name: "Config: Zone-2 X2"
+        # restore_value: true
+      y2:
+        name: "Config: Zone-2 Y2"
+        # restore_value: true
+    zone_3:
+      x1:
+        name: "Config: Zone-3 X1"
+        # restore_value: true
+      y1:
+        name: "Config: Zone-3 Y1"
+        # restore_value: true
+      x2:
+        name: "Config: Zone-3 X2"
+        # restore_value: true
+      y2:
+        name: "Config: Zone-3 Y2"
+        # restore_value: true
+    zone_4:
+      x1:
+        name: "Config: Zone-4 X1"
+        # restore_value: true
+      y1:
+        name: "Config: Zone-4 Y1"
+        # restore_value: true
+      x2:
+        name: "Config: Zone-4 X2"
+        # restore_value: true
+      y2:
+        name: "Config: Zone-4 Y2"
+        # restore_value: true

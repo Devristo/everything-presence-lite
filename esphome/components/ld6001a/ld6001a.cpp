@@ -24,6 +24,30 @@ void LD6001AComponent::setup() {
   this->set_protocol_mode(ProtocolMode::PROTOCOL_MODE_DETAILED);
   this->start();
   this->command_queue_.enqueue(Command::ReadCommand());
+
+  uint32_t hash = fnv1_hash(App.get_friendly_name());
+  this->pref_ = global_preferences->make_preference<ZoneCoordinates[MAX_ZONES]>(hash, true);
+
+  ZoneCoordinates zones[MAX_ZONES];
+
+  if (this->pref_.load(&zones)) {
+    ESP_LOGW(TAG, "Loaded %d zones from preferences", MAX_ZONES);
+
+    for (size_t i = 0; i < MAX_ZONES; i++) {
+      maybe_publish(this->zone_numbers_[i].x1, zones[i].x1);
+      maybe_publish(this->zone_numbers_[i].x2, zones[i].x2);
+      maybe_publish(this->zone_numbers_[i].y1, zones[i].y1);
+      maybe_publish(this->zone_numbers_[i].y2, zones[i].y2);
+
+      this->zone_config_[i].x1 = zones[i].x1;
+      this->zone_config_[i].x2 = zones[i].x2;
+      this->zone_config_[i].y1 = zones[i].y1;
+      this->zone_config_[i].y2 = zones[i].y2;
+    }
+
+  } else {
+    ESP_LOGW(TAG, "No zones found in preferences");
+  }
 }
 
 void LD6001AComponent::dump_config() { ESP_LOGCONFIG(TAG, "HLK-LD6001A Human motion tracking radar module:"); }
@@ -247,6 +271,22 @@ void LD6001AComponent::update_sensors_() {
     maybe_publish(this->move_distance_sensors_[i], distance);
   }
 
+  for (size_t index = 0; index < MAX_ZONES; ++index) {
+    auto &zone = this->zone_config_[index];
+    zone.target_count = 0;
+
+    for (const auto &person : this->detailed_people_response_) {
+      auto target_id = person.id;
+      auto coord_x = person.x;
+      auto coord_y = person.y;
+
+      if (zone.contains(coord_x * 100, coord_y * 100)) {
+        zone.target_count++;
+      }
+    }
+    maybe_publish(this->zone_target_count_sensors_[index], zone.target_count);
+  }
+
   this->update_trigger_.trigger(this->detailed_people_response_);
 }
 
@@ -266,6 +306,48 @@ void LD6001AComponent::set_move_y_sensor(uint8_t target, sensor::Sensor *s) { th
 void LD6001AComponent::set_move_z_sensor(uint8_t target, sensor::Sensor *s) { this->move_z_sensors_[target] = s; }
 void LD6001AComponent::set_move_distance_sensor(uint8_t zone, sensor::Sensor *s) {
   this->move_distance_sensors_[zone] = s;
+}
+void LD6001AComponent::set_zone_target_count_sensor(uint8_t zone, sensor::Sensor *s) {
+  this->zone_target_count_sensors_[zone] = s;
+}
+#endif
+
+#ifdef USE_NUMBER
+void LD6001AComponent::set_zone_coordinate(uint8_t zone) {
+  number::Number *x1sens = this->zone_numbers_[zone].x1;
+  number::Number *y1sens = this->zone_numbers_[zone].y1;
+  number::Number *x2sens = this->zone_numbers_[zone].x2;
+  number::Number *y2sens = this->zone_numbers_[zone].y2;
+  if (!x1sens->has_state() || !y1sens->has_state() || !x2sens->has_state() || !y2sens->has_state()) {
+    return;
+  }
+
+  ESP_LOGW(TAG, "Set new coordinates for zone %d: (%d, %d) (%d, %d)", zone, static_cast<int>(x1sens->state),
+           static_cast<int>(y1sens->state), static_cast<int>(x2sens->state), static_cast<int>(y2sens->state));
+
+  this->zone_config_[zone].x1 = static_cast<int>(x1sens->state);
+  this->zone_config_[zone].y1 = static_cast<int>(y1sens->state);
+  this->zone_config_[zone].x2 = static_cast<int>(x2sens->state);
+  this->zone_config_[zone].y2 = static_cast<int>(y2sens->state);
+
+  ZoneCoordinates zones[MAX_ZONES];
+  for (size_t i = 0; i < MAX_ZONES; i++) {
+    zones[i].x1 = this->zone_config_[i].x1;
+    zones[i].y1 = this->zone_config_[i].y1;
+    zones[i].x2 = this->zone_config_[i].x2;
+    zones[i].y2 = this->zone_config_[i].y2;
+  }
+  this->pref_.save(&zones);
+}
+
+void LD6001AComponent::set_zone_numbers(uint8_t zone, number::Number *x1, number::Number *y1, number::Number *x2,
+                                       number::Number *y2) {
+  if (zone < MAX_ZONES) {
+    this->zone_numbers_[zone].x1 = x1;
+    this->zone_numbers_[zone].y1 = y1;
+    this->zone_numbers_[zone].x2 = x2;
+    this->zone_numbers_[zone].y2 = y2;
+  }
 }
 #endif
 

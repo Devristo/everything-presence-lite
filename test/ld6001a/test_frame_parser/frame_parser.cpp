@@ -4,6 +4,8 @@
 #include <queue>
 #include <vector>
 #include "ld6001a/frame_parser.h"  // Include the header file for the class being tested
+
+#include "esphome/components/json/json_util.cpp" // Ugly, but otherwise the test fails to compile with "undefined reference to `esphome::json::parse_json(std::string const&, esphome::json::json_parse_t const&)'"
 #include <ArduinoFake.h>
 
 using namespace esphome::ld6001a;
@@ -36,9 +38,11 @@ void test_it_should_accept_at_ok(void) {
   frame_iterator.push_data('+');
   frame_iterator.push_data('O');
   frame_iterator.push_data('K');
+  frame_iterator.push_data('\r');
   frame_iterator.push_data('\n');
 
   TEST_ASSERT_EQUAL(ParseState::COMPLETE, frame_iterator.state_);
+
   TEST_ASSERT_EQUAL(true, handler.on_ack_response_called);
 }
 
@@ -68,6 +72,7 @@ void test_it_should_skip_unknown_bytes(void) {
   frame_iterator.push_data('+');
   frame_iterator.push_data('O');
   frame_iterator.push_data('K');
+  frame_iterator.push_data('\r');
   frame_iterator.push_data('\n');
 
   TEST_ASSERT_EQUAL(ParseState::COMPLETE, frame_iterator.state_);

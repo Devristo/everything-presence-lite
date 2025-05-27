@@ -17,7 +17,7 @@ from esphome.const import (
     UNIT_MILLISECOND,
 )
 
-from .. import CONF_LD6001A_ID, LD6001AComponent, ld6001a_ns
+from .. import CONF_LD6001A_ID, LD6001AComponent, ld6001a_ns, MAX_ZONES
 
 GroundRadiusNumber = ld6001a_ns.class_("GroundRadiusNumber", number.Number)
 CoordinateType = ld6001a_ns.enum("CoordinateType")
@@ -36,6 +36,17 @@ CONF_MOVING_TARGET_DISAPPEARANCE_TIME = "moving_target_disappearance_time"
 CONF_INSTALLATION_HEIGHT = "installation_height"
 CONF_LONG_DISTANCE_SENSITIVITY = "long_distance_sensitivity"
 CONF_HEARTBEAT = "heart_beat"
+
+CONF_X1 = "x1"
+CONF_X2 = "x2"
+CONF_Y1 = "y1"
+CONF_Y2 = "y2"
+ICON_ARROW_BOTTOM_RIGHT = "mdi:arrow-bottom-right"
+ICON_ARROW_BOTTOM_RIGHT_BOLD_BOX_OUTLINE = "mdi:arrow-bottom-right-bold-box-outline"
+ICON_ARROW_TOP_LEFT = "mdi:arrow-top-left"
+ICON_ARROW_TOP_LEFT_BOLD_BOX_OUTLINE = "mdi:arrow-top-left-bold-box-outline"
+
+ZoneCoordinateNumber = ld6001a_ns.class_("ZoneCoordinateNumber", number.Number)
 
 RANGE_CONFS = [
     ["x_min", CoordinateType.X_MIN, -500, -20],
@@ -100,7 +111,43 @@ CONFIG_SCHEMA = cv.Schema(
     }
 )
 
-
+CONFIG_SCHEMA = CONFIG_SCHEMA.extend(
+    {
+        cv.Optional(f"zone_{n + 1}"): cv.Schema(
+            {
+                cv.Required(CONF_X1): number.number_schema(
+                    ZoneCoordinateNumber,
+                    device_class=DEVICE_CLASS_DISTANCE,
+                    unit_of_measurement=UNIT_CENTIMETER,
+                    entity_category=ENTITY_CATEGORY_CONFIG,
+                    icon=ICON_ARROW_TOP_LEFT_BOLD_BOX_OUTLINE,
+                ),
+                cv.Required(CONF_Y1): number.number_schema(
+                    ZoneCoordinateNumber,
+                    device_class=DEVICE_CLASS_DISTANCE,
+                    unit_of_measurement=UNIT_CENTIMETER,
+                    entity_category=ENTITY_CATEGORY_CONFIG,
+                    icon=ICON_ARROW_TOP_LEFT,
+                ),
+                cv.Required(CONF_X2): number.number_schema(
+                    ZoneCoordinateNumber,
+                    device_class=DEVICE_CLASS_DISTANCE,
+                    unit_of_measurement=UNIT_CENTIMETER,
+                    entity_category=ENTITY_CATEGORY_CONFIG,
+                    icon=ICON_ARROW_BOTTOM_RIGHT_BOLD_BOX_OUTLINE,
+                ),
+                cv.Required(CONF_Y2): number.number_schema(
+                    ZoneCoordinateNumber,
+                    device_class=DEVICE_CLASS_DISTANCE,
+                    unit_of_measurement=UNIT_CENTIMETER,
+                    entity_category=ENTITY_CATEGORY_CONFIG,
+                    icon=ICON_ARROW_BOTTOM_RIGHT,
+                ),
+            }
+        )
+        for n in range(MAX_ZONES)
+    }
+)
 
 CONFIG_SCHEMA = CONFIG_SCHEMA.extend(
     {
@@ -179,4 +226,40 @@ async def to_code(config):
             setter = f"set_{coordinate_name}_number"
 
             cg.add(getattr(ld6001a_component, setter)(n))
+
+    for zone_num in range(MAX_ZONES):
+        if zone_conf := config.get(f"zone_{zone_num + 1}"):
+            zone_x1_config = zone_conf.get(CONF_X1)
+            
+
+            x1 = cg.new_Pvariable(zone_x1_config[CONF_ID], zone_num)
+            x1_n = await number.register_number(
+                x1, zone_x1_config, min_value=-500, max_value=500, step=1
+            )
+
+            await cg.register_parented(x1, config[CONF_LD6001A_ID])
+
+            zone_y1_config = zone_conf.get(CONF_Y1)
+            y1 = cg.new_Pvariable(zone_y1_config[CONF_ID], zone_num)
+            await number.register_number(
+                y1, zone_y1_config, min_value=-500, max_value=500, step=1
+            )
+            await cg.register_parented(y1, config[CONF_LD6001A_ID])
+
+            zone_x2_config = zone_conf.get(CONF_X2)
+            x2 = cg.new_Pvariable(zone_x2_config[CONF_ID], zone_num)
+            await number.register_number(
+                x2, zone_x2_config, min_value=-500, max_value=500, step=1
+            )
+            await cg.register_parented(x2, config[CONF_LD6001A_ID])
+
+            zone_y2_config = zone_conf.get(CONF_Y2)
+            y2 = cg.new_Pvariable(zone_y2_config[CONF_ID], zone_num)
+            await number.register_number(
+                y2, zone_y2_config, min_value=-500, max_value=500, step=1
+            )
+            await cg.register_parented(y2, config[CONF_LD6001A_ID])
+
+            cg.add(ld6001a_component.set_zone_numbers(zone_num, x1, y1, x2, y2))
+
         
