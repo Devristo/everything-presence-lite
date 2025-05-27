@@ -54,7 +54,7 @@ struct ReadParamsResponse {
   float target_exit_time;
 };
 
-enum class ParseState { IDLE, READING_HEADER, READING_BODY, VALIDATING, COMPLETE, INVALID };
+enum class ParseState { IDLE, READING_HEADER, VALIDATING, COMPLETE, INVALID };
 
 class FrameHandler {
  public:
@@ -97,27 +97,6 @@ class FrameParser {
     push_data(u32.bytes);
   }
 
-  void try_parse_frame_() {
-    switch (state_) {
-      case ParseState::READING_HEADER:
-      case ParseState::IDLE:
-        handle_idle_state();
-        break;
-      case ParseState::READING_BODY:
-        handle_reading_body_state();
-        break;
-      case ParseState::VALIDATING:
-        handle_validating_state();
-        break;
-      case ParseState::COMPLETE:
-        handle_complete_state();
-        break;
-      case ParseState::INVALID:
-        handle_invalid_state();
-        break;
-    }
-  }
-
  private:
   std::vector<uint8_t> buffer_;         // Input buffer for incoming bytes
   std::vector<uint8_t> current_frame_;  // The current complete frame
@@ -145,40 +124,42 @@ class FrameParser {
     }
   }
 
-  void handle_idle_state() {
+  void try_parse_frame_() {
     bool invalid = false;
     bool partial = false;
     bool complete = false;
+    using MatcherFn = MatchResult (FrameParser::*)();
+
+    MatcherFn matchers[] = {
+      &FrameParser::match_at_ok_, 
+      &FrameParser::match_binary_type1_, 
+      &FrameParser::match_binary_type2_,
+      &FrameParser::match_read_response_,
+    };
 
     do {
-      MatchResult ok_result = match_at_ok_();
-      MatchResult simple_result = match_binary_type1_();
-      MatchResult detailed_result = match_binary_type2_();
-      MatchResult read_response = match_read_response_();
-      MatchResult save_param_fail_respone_ = match_save_para_fail_();
+      invalid = true;
+      complete = false;
+      partial = false;
 
-      invalid = ok_result == MatchResult::INVALID && simple_result == MatchResult::INVALID &&
-                detailed_result == MatchResult::INVALID && read_response == MatchResult::INVALID
-                && save_param_fail_respone_ == MatchResult::INVALID;
+      for (const auto &matcher : matchers) {
+        MatchResult result = (this->*matcher)();
+        if (result == MatchResult::COMPLETE) {
+          complete = true;
+          invalid = false;
+          partial = false;
+          break;
+        } else if (result == MatchResult::PARTIAL) {
+          partial = true;
+          invalid = false;
+        } else if (result == MatchResult::INVALID) {
+          invalid = !partial && true;
+        }
+      }
 
-      partial = ok_result == MatchResult::PARTIAL || simple_result == MatchResult::PARTIAL ||
-                detailed_result == MatchResult::PARTIAL
-                || read_response == MatchResult::PARTIAL
-                || save_param_fail_respone_ == MatchResult::PARTIAL;
-
-      if (ok_result == MatchResult::COMPLETE) {
-        state_ = ParseState::COMPLETE;
-        process_at_ok_response();
-        return;
-      } else if (simple_result == MatchResult::COMPLETE) {
-        state_ = ParseState::READING_BODY;
-        auto frame_type = buffer_[2];
-        body_len_ = buffer_[2];  // Body length is the 3rd byte in type 1
-      } else if (detailed_result == MatchResult::COMPLETE) {
-        state_ = ParseState::READING_BODY;
-        auto length = read_uint32(&buffer_[8]);
-        body_len_ = length + 1;  // Body length is the 9th byte in type 2
-      } else if (partial) {
+      if (complete) {
+        state_ = ParseState::IDLE;        
+      } if (partial) {
         this->state_ = ParseState::READING_HEADER;
       } else if (invalid) {
         state_ = ParseState::INVALID;
@@ -262,8 +243,6 @@ class FrameParser {
       read_params_response.static_target_disappearance_time = obj["Static target"].as<float>();
       read_params_response.target_exit_time = obj["Target exit"].as<float>();
 
-      state_ = ParseState::COMPLETE;
-
       this->frame_handler_.on_ack_response();
       this->frame_handler_.on_read_params_response(read_params_response);
 
@@ -275,57 +254,19 @@ class FrameParser {
     return MatchResult::COMPLETE;
   }
 
-  void handle_reading_header_state() {
-    // Frame headers are already matched, now we start reading the body
-    state_ = ParseState::READING_BODY;
-  }
-
-  void handle_reading_body_state() {
-    if (buffer_.size() >= body_len_) {
-      // Enough data in buffer for the full frame
-      state_ = ParseState::VALIDATING;
-      handle_validating_state();
-    }
-  }
-
-  void handle_validating_state() {
-    if (validate_frame()) {
-      state_ = ParseState::COMPLETE;
-      this->handle_complete_state();
-    } else {
-      state_ = ParseState::INVALID;
-    }
-  }
-
-  void handle_complete_state() {
-    // Process the complete frame
-    process_frame();
-    state_ = ParseState::IDLE;  // Reset state to idle after processing a frame
-  }
-
-  void handle_invalid_state() {
-    ESP_LOGD("ld6001a", "Handle invalid state %s", format_hex_pretty(buffer_).c_str());
-    // Handle invalid frame (log error, resync, etc.)
-    // drain_one_byte();  // Remove the invalid byte from the buffer
-    state_ = ParseState::IDLE;  // Reset state after invalid frame
-    handle_idle_state();        // Try to find the next valid frame
-  }
-
   MatchResult match_at_ok_() {
     auto buffer_size = buffer_.size();
+    auto match_size = std::min<size_t>(3, buffer_size);
     const std::string prefix = "AT+";
     const std::string suffix = "\r\n";
 
-    if (buffer_size < prefix.size()) {
-      // Not enough for prefix
-      return std::equal(buffer_.begin(), buffer_.end(), prefix.begin())
-                 ? MatchResult::PARTIAL
-                 : MatchResult::INVALID;
-    }
+    bool match = std::equal(prefix.begin(), prefix.begin() + match_size, buffer_.begin());
 
-    // Check prefix
-    if (!std::equal(buffer_.begin(), buffer_.begin() + prefix.size(), prefix.begin()))
+    if (!match) {
       return MatchResult::INVALID;
+    } else if (buffer_size < prefix.size()) {
+      return MatchResult::PARTIAL;
+    }
 
     size_t pos = prefix.size();
 
@@ -352,6 +293,8 @@ class FrameParser {
 
       buffer_.erase(buffer_.begin(), buffer_.begin() + pos+1 + 1);
 
+      this->frame_handler_.on_ack_response(); 
+  
       return MatchResult::COMPLETE;
     }
 
@@ -363,9 +306,33 @@ class FrameParser {
     auto match_size = std::min<size_t>(2, buffer_size);
     static const std::array<uint8_t, 2> header = {0x55, 0xAA};
 
-    return std::equal(header.begin(), header.begin() + match_size, buffer_.begin())
-               ? (buffer_size < 4 ? MatchResult::PARTIAL : MatchResult::COMPLETE)
-               : MatchResult::INVALID;
+    auto match = std::equal(buffer_.begin(), buffer_.begin() + match_size, header.begin());
+
+    if (!match) {
+      return MatchResult::INVALID;
+    }
+
+    if (buffer_size < header.size()) {
+     return MatchResult::PARTIAL;
+    }
+
+    state_ = ParseState::READING_HEADER;
+    
+    auto frame_type = buffer_[2];
+    body_len_ = buffer_[2];  // Body length is the 3rd byte in type 1
+
+     if (buffer_size < body_len_) {
+      // Not enough for body
+      return MatchResult::PARTIAL;
+     }
+
+     if (!validate_frame()) {
+      return MatchResult::INVALID;
+     }
+
+     buffer_.erase(buffer_.begin(), buffer_.begin() + body_len_);  // Remove the processed part from the buffer
+     this->frame_handler_.on_simple_radar_response(buffer_[8]);
+     return MatchResult::COMPLETE;
   }
 
   MatchResult match_binary_type2_() {
@@ -373,9 +340,28 @@ class FrameParser {
     auto match_size = std::min<size_t>(8, buffer_size);
     static const std::array<uint8_t, 8> header = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
-    return std::equal(header.begin(), header.begin() + match_size, buffer_.begin())
-               ? (buffer_size < 8 + 4 ? MatchResult::PARTIAL : MatchResult::COMPLETE)
-               : MatchResult::INVALID;
+    bool match = std::equal(header.begin(), header.begin() + match_size, buffer_.begin());
+
+    if (!match) { 
+      return MatchResult::INVALID;
+    } else if (buffer_size < header.size() + 4) {
+      return MatchResult::PARTIAL;
+    }
+    
+    auto body_len_ = read_uint32(&buffer_[8]) + 1;
+
+    if (buffer_size < body_len_) {
+      // Not enough for body
+      return MatchResult::PARTIAL;
+    }
+
+    if (!validate_frame()) {
+      return MatchResult::INVALID;
+    }
+
+     process_binary_type2_response();
+
+     return MatchResult::COMPLETE;
   }
 
   void drain_one_byte() {
@@ -407,26 +393,6 @@ class FrameParser {
 
       return expected_checksum == calculted_checksum;
     }
-  }
-
-  void process_frame() {
-    // Process the frame (e.g., call specific handlers)
-    if (match_at_ok_() == MatchResult::COMPLETE) {
-      // Handle AT+OK frame response
-      process_at_ok_response();
-    } else if (match_binary_type1_() == MatchResult::COMPLETE) {
-      // Handle type 1 frame (0x55 0xAA)
-      process_binary_type1_response();
-    } else if (match_binary_type2_() == MatchResult::COMPLETE) {
-      // Handle type 2 frame (0x01 0x02 0x03 0x04 ...)
-      process_binary_type2_response();
-    }
-  }
-
-  void process_at_ok_response() { this->frame_handler_.on_ack_response(); }
-
-  void process_binary_type1_response() {
-    this->frame_handler_.on_simple_radar_response(buffer_[8]);  // Assuming 4th byte is people count
   }
 
   void process_binary_type2_response() {

@@ -41,8 +41,7 @@ void test_it_should_accept_at_ok(void) {
   frame_iterator.push_data('\r');
   frame_iterator.push_data('\n');
 
-  TEST_ASSERT_EQUAL(ParseState::COMPLETE, frame_iterator.state_);
-
+  TEST_ASSERT_EQUAL(ParseState::IDLE, frame_iterator.state_);
   TEST_ASSERT_EQUAL(true, handler.on_ack_response_called);
 }
 
@@ -75,7 +74,7 @@ void test_it_should_skip_unknown_bytes(void) {
   frame_iterator.push_data('\r');
   frame_iterator.push_data('\n');
 
-  TEST_ASSERT_EQUAL(ParseState::COMPLETE, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::IDLE, frame_iterator.state_);
   TEST_ASSERT_EQUAL(true, handler.on_ack_response_called);
 }
 
@@ -95,7 +94,7 @@ void test_it_should_accept_binary_type1(void) {
   frame_iterator.push_data(0xAA);
   frame_iterator.push_data(0x0A);
   frame_iterator.push_data(0x04);
-  TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::READING_HEADER, frame_iterator.state_);
   frame_iterator.push_data(0x00);
   frame_iterator.push_data(0x00);
   frame_iterator.push_data(0x00);
@@ -122,13 +121,13 @@ void test_it_should_accept_binary_type2(void) {
   // 0 Bytes
   frame_iterator.push_data<8>({0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08});
   frame_iterator.push_uint32(96); // Length of the body
-  TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::READING_HEADER, frame_iterator.state_);
   frame_iterator.push_data<4>({0xA3, 0x01, 0x00, 0x00}); // Length of the body
   frame_iterator.push_data<4>({0x01, 0x00, 0x00, 0x00}); // TLV1
   frame_iterator.push_data<4>({0x0, 0x00, 0x00, 0x00}); // Constant
   frame_iterator.push_data<4>({0x02, 0x00, 0x00, 0x00}); // TLV2
   frame_iterator.push_data<4>({0x40, 0x00, 0x00, 0x00}); // TRACKLENGTH (number of people * 32)
-  TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::READING_HEADER, frame_iterator.state_);
   // 32 bytes
 
   // Person 0
@@ -137,7 +136,7 @@ void test_it_should_accept_binary_type2(void) {
   frame_iterator.push_data<4>({0x21, 0x28, 0x96, 0xBF}); // X (float)
   frame_iterator.push_data<4>({0xCB, 0x85, 0x20, 0x40}); // Y (float)
   frame_iterator.push_data<4>({0x9A, 0xAB, 0xA3, 0x3E}); // Z (float)
-  TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::READING_HEADER, frame_iterator.state_);
     
   frame_iterator.push_data<4>({0x8A, 0xBD, 0xC1, 0x3D}); // Vx (float)
   frame_iterator.push_data<4>({0x50, 0x98, 0x99, 0xBD}); // Vy (float)
@@ -150,7 +149,7 @@ void test_it_should_accept_binary_type2(void) {
   frame_iterator.push_data<4>({0x21, 0x28, 0x96, 0xBF}); // X (float)
   frame_iterator.push_data<4>({0xCB, 0x85, 0x20, 0x40}); // Y (float)
   frame_iterator.push_data<4>({0x9A, 0xAB, 0xA3, 0x3E}); // Z (float)
-  TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::READING_HEADER, frame_iterator.state_);
     
   frame_iterator.push_data<4>({0x8A, 0xBD, 0xC1, 0x3D}); // Vx (float)
   frame_iterator.push_data<4>({0x50, 0x98, 0x99, 0xBD}); // Vy (float)
@@ -177,7 +176,7 @@ void test_it_should_validate_checksum(void) {
   frame_iterator.push_data<2>({0x55, 0xAA});
   frame_iterator.push_data(10); // Length of the body
   frame_iterator.push_data(0x04);
-  TEST_ASSERT_EQUAL(ParseState::READING_BODY, frame_iterator.state_);
+  TEST_ASSERT_EQUAL(ParseState::READING_HEADER, frame_iterator.state_);
   frame_iterator.push_data<2>({0x00, 0x00});
   frame_iterator.push_data(0x00);
   frame_iterator.push_data(0x00);

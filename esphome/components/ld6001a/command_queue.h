@@ -119,6 +119,10 @@ class CommandQueue {
     }
   }
 
+  void loop() {
+    trySendNext();
+  }
+
   void handleResponse(const std::string &response) {
     if (!waitingForAck || queue.empty())
       return;

@@ -62,6 +62,7 @@ void LD6001AComponent::loop() {
     }
   }
 
+  command_queue_.loop();
   update_sensors_();
 }
 
