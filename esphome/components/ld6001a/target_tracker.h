@@ -3,14 +3,16 @@
 #include <queue>
 #include <cinttypes>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace esphome {
 namespace ld6001a {
 
+template<typename T>
 class TargetEventHandler {
  public:
-  virtual void on_target_enter(uint32_t target_id) = 0;
-  virtual void on_target_left(uint32_t target_id, uint32_t dwell_time) = 0;
+  virtual void on_target_enter(T target_id) = 0;
+  virtual void on_target_left(T target_id, uint32_t dwell_time) = 0;
 };
 
 template<typename T>
@@ -18,7 +20,7 @@ class TargetTracker {
   using id_type = decltype(std::declval<T>().id);
 
  public:
-  TargetTracker(TargetEventHandler &event_handler) : event_handler_(event_handler) {}
+  TargetTracker(TargetEventHandler<id_type> &event_handler) : event_handler_(event_handler) {}
 
   template<typename Container> void update(const Container &targets) {
     auto now = millis();
@@ -52,7 +54,7 @@ class TargetTracker {
 
  protected:
   std::unordered_map<id_type, T> targets_;
-  TargetEventHandler &event_handler_;
+  TargetEventHandler<id_type> &event_handler_;
   std::unordered_map<id_type, uint32_t> entry_times_;
   std::unordered_map<id_type, uint32_t> last_seen_times_;
 };
